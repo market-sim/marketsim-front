@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from "react-router";
 import { Bell, ChevronRight, Layers, LogOut, Menu, Search } from "lucide-react";
 import { DISPLAY } from "../shared/ui";
 import { useAuth } from "../auth/AuthContext";
+import MarketTicker from "./MarketTicker";
 import { adminNavItem, navItems, pageTitles } from "./navConfig";
 
 /** Sidebar + header du template ; la page du module s'affiche dans <Outlet />. */
@@ -19,7 +20,10 @@ export default function AppLayout() {
     `w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${isActive ? "bg-blue-600 text-white" : "text-white/55 hover:bg-white/10 hover:text-white"} ${collapsed ? "justify-center" : ""}`;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex flex-col h-screen overflow-hidden bg-background">
+      {/* ── Bandeau des marches mondiaux (module 6) ── */}
+      <MarketTicker />
+      <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* ── Sidebar ── */}
       <aside className={`flex flex-col shrink-0 transition-all duration-200 ${collapsed ? "w-16" : "w-60"}`} style={{ background: "#0D1B3E" }}>
         <div className="flex items-center gap-3 h-16 px-4 border-b border-white/10 shrink-0">
@@ -126,6 +130,7 @@ export default function AppLayout() {
           <Outlet />
           <div className="h-4" />
         </main>
+      </div>
       </div>
     </div>
   );

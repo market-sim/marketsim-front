@@ -217,6 +217,15 @@ export interface ReplayResult {
   days: ReplayDay[]; agentReturn: number; benchmarkReturn: number; agentMaxDrawdown: number; agentTrades: number;
 }
 
+export interface TickerQuote {
+  symbol: string; name: string; category: "INDEX" | "STOCK" | "FOREX" | "COMMODITY" | "CRYPTO";
+  price: number; change: number; changePct: number; currency: string;
+}
+
+export const tickerApi = {
+  get: () => api.get<{ quotes: TickerQuote[]; updatedAt: string; stale: boolean }>("/agents/ticker").then((r) => r.data),
+};
+
 export interface AssistantMessage { role: "user" | "assistant"; content: string }
 export interface AssistantReply {
   reply: string; sources: { title: string; url: string }[]; online: boolean; webSearchUsed: boolean;
