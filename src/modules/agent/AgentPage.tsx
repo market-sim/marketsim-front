@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Bot, Brain, Dices, Gamepad2, GraduationCap, Pencil, Plus, Sparkles, Trash2, Trophy } from "lucide-react";
-import { agentsApi, assetsApi, type AgentConfig, type Asset } from "../../api/endpoints";
+import { agentsApi, assetsApi, type AgentConfig, type AnomalyReport, type Asset } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
 import { CardShell, DISPLAY } from "../../shared/ui";
 import AgentFormModal from "./components/AgentFormModal";
@@ -32,6 +32,8 @@ export default function AgentPage() {
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
+  const [reports, setReports] = useState<AnomalyReport[]>([]);
+  const loadReports = () => agentsApi.allAnomalies().then(setReports).catch(() => setReports([]));
 
   const load = async (selectId?: number) => {
     try {
@@ -47,6 +49,7 @@ export default function AgentPage() {
 
   useEffect(() => {
     load();
+    loadReports();
     assetsApi.list().then(setAssets).catch(() => setAssets([]));
   }, []);
 
@@ -105,6 +108,11 @@ export default function AgentPage() {
             className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm border transition-colors ${a.id === selectedId ? "bg-white border-blue-500 shadow-sm" : "bg-white/60 border-border/60 hover:border-blue-200"}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${a.active ? "bg-emerald-500" : "bg-slate-300"}`} />
             <span className="font-medium text-foreground">{a.name}</span>
+            {(() => {
+              const r = reports.find((x) => x.agentId === a.id);
+              if (!r || (r.status !== "ALERT" && r.status !== "WATCH")) return null;
+              return <span title={r.summary} className={`text-[10px] font-bold px-1.5 rounded ${r.status === "ALERT" ? "bg-red-500 text-white" : "bg-amber-400 text-amber-950"}`}>⚠</span>;
+            })()}
             <span className="text-[10px] text-muted-foreground">{strategyShort[a.strategy]}</span>
           </button>
         ))}
@@ -180,7 +188,7 @@ export default function AgentPage() {
               ))}
             </div>
             {tab === "assistant" && <AssistantPanel />}
-            {tab === "decisions" && <DecisionsPanel agent={agent} />}
+            {tab === "decisions" && <DecisionsPanel agent={agent} onChange={loadReports} />}
             {tab === "montecarlo" && <MonteCarloPanel agent={agent} />}
             {tab === "training" && <TrainingPanel agent={agent} onTrained={() => load()} />}
             {tab === "tournament" && <TournamentPanel agents={agents} assets={assets} />}

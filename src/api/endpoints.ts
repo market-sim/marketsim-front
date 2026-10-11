@@ -127,6 +127,18 @@ export interface AgentConfig {
   createdAt?: string;
 }
 
+export type AnomalyStatus = "NORMAL" | "WATCH" | "ALERT" | "INSUFFICIENT_DATA";
+export interface Anomaly {
+  type: "CONFIDENCE_DROP" | "OVERCONFIDENCE" | "ACTION_MIX" | "POSITION_SIZE" | "OUTLIER_DECISION" | "APPROVAL_DROP";
+  severity: "LOW" | "MEDIUM" | "HIGH";
+  title: string; message: string; metric: string; baseline: number; recent: number; score: number; pValue: number | null;
+}
+export interface AnomalyReport {
+  agentId: number; agentName: string; status: AnomalyStatus; anomalyScore: number;
+  baselineSource: "HISTORY" | "SIMULATED" | null; baselineSize: number; recentSize: number;
+  anomalies: Anomaly[]; summary: string; generatedAt: string;
+}
+
 export interface Contribution { feature: string; label: string; value: number; contribution: number }
 
 export interface AgentDecision {
@@ -279,7 +291,10 @@ export const agentsApi = {
   toggle: (id: number) => api.patch<AgentConfig>(`/agents/${id}/toggle`).then((r) => r.data),
   remove: (id: number) => api.delete(`/agents/${id}`),
   // IA : decisions expliquees (XAI)
-  decide: (id: number) => api.post<AgentDecision[]>(`/agents/${id}/decide`).then((r) => r.data),
+  decide: (id: number, rounds = 1) => api.post<AgentDecision[]>(`/agents/${id}/decide`, null, { params: { rounds } }).then((r) => r.data),
+  // IA : surveillance comportementale (detection d'anomalies)
+  anomalies: (id: number) => api.get<AnomalyReport>(`/agents/${id}/anomalies`).then((r) => r.data),
+  allAnomalies: () => api.get<AnomalyReport[]>("/agents/anomalies").then((r) => r.data),
   decisions: (id: number) => api.get<AgentDecision[]>(`/agents/${id}/decisions`).then((r) => r.data),
   rate: (decisionId: number, rating: number, comment?: string) =>
     api.patch<AgentDecision>(`/agents/decisions/${decisionId}/rating`, { rating, comment }).then((r) => r.data),

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bot, Brain, CheckCircle, ThumbsDown, ThumbsUp } from "lucide-react";
-import { agentsApi, type AgentConfig, type AgentDecision, type Contribution } from "../../../api/endpoints";
+import { agentsApi, type AgentConfig, type AgentDecision, type AnomalyReport, type Contribution } from "../../../api/endpoints";
 import { errorMessage } from "../../../api/client";
 import { CardShell, DISPLAY, MONO } from "../../../shared/ui";
 import { actionStyle, humanExplanation, pctPlain } from "../format";
+import BehaviorMonitor from "./BehaviorMonitor";
 import ConfidenceGauge from "./ConfidenceGauge";
 
 /** Barres divergentes : contribution de chaque variable (vert pousse a acheter / a la decision, rouge freine). */
@@ -50,26 +51,33 @@ function Approval({ value, onRate }: { value: number | null; onRate: (v: number)
   );
 }
 
-export default function DecisionsPanel({ agent }: { agent: AgentConfig }) {
+export default function DecisionsPanel({ agent, onChange }: { agent: AgentConfig; onChange?: () => void }) {
   const [decisions, setDecisions] = useState<AgentDecision[]>([]);
+  const [report, setReport] = useState<AnomalyReport | null>(null);
   const [simWinRate, setSimWinRate] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const isQ = agent.strategy === "Q_LEARNING";
 
+  const loadReport = () => agentsApi.anomalies(agent.id!).then(setReport).catch(() => setReport(null));
+
   useEffect(() => {
     setError("");
+    setReport(null);
+    loadReport();
     agentsApi.decisions(agent.id!).then(setDecisions).catch((e) => setError(errorMessage(e)));
     // dernier Monte Carlo ayant enregistre des trades (les anciens runs n'avaient pas ce champ)
     agentsApi.monteCarloRuns(agent.id!).then((runs) => setSimWinRate(runs.find((r) => r.winRate > 0)?.winRate ?? null)).catch(() => setSimWinRate(null));
   }, [agent.id]);
 
-  const run = async () => {
+  const run = async (rounds = 1) => {
     setBusy(true);
     setError("");
     try {
-      const fresh = await agentsApi.decide(agent.id!);
+      const fresh = await agentsApi.decide(agent.id!, rounds);
       setDecisions((prev) => [...fresh, ...prev].slice(0, 50));
+      await loadReport();
+      onChange?.();
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -80,6 +88,8 @@ export default function DecisionsPanel({ agent }: { agent: AgentConfig }) {
   const rate = async (d: AgentDecision, rating: number) => {
     const updated = await agentsApi.rate(d.id, rating);
     setDecisions((prev) => prev.map((x) => (x.id === d.id ? updated : x)));
+    loadReport();
+    onChange?.();
   };
 
   // XAI global : importance moyenne |contribution| de chaque variable sur l'historique
@@ -114,9 +124,15 @@ export default function DecisionsPanel({ agent }: { agent: AgentConfig }) {
               {isQ ? "Attribution par occlusion sur la Q-table apprise." : "Valeurs SHAP exactes du modèle linéaire (la somme des contributions = score)."}
               {agent.active ? " Agent actif : BUY/SELL deviennent des ordres réels (module Trading)." : " Agent en pause : décisions simulées uniquement."}
             </p>
-            <button onClick={run} disabled={busy} className="mt-3 flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg px-4 py-2">
-              <Brain className="w-4 h-4" />{busy ? "Analyse..." : "Analyser le marché"}
-            </button>
+            <div className="mt-3 flex items-center gap-2">
+              <button onClick={() => run(1)} disabled={busy} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg px-4 py-2">
+                <Brain className="w-4 h-4" />{busy ? "Analyse..." : "Analyser le marché"}
+              </button>
+              <button onClick={() => run(5)} disabled={busy} title="5 analyses successives sur 5 états de marché différents"
+                className="text-sm font-semibold rounded-lg px-3 py-2 border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-60">
+                ×5
+              </button>
+            </div>
             {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
           </div>
           {latest && (
@@ -158,6 +174,8 @@ export default function DecisionsPanel({ agent }: { agent: AgentConfig }) {
           </div>
         )}
       </CardShell>
+
+      <BehaviorMonitor report={report} />
 
       <CardShell className="overflow-hidden">
         <div className="divide-y divide-border/40">
