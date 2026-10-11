@@ -141,9 +141,9 @@ export default function AssistantPanel() {
             {speaking ? "Atlas parle…" : listening ? "Je vous écoute…" : "Briefings, explications de vos agents et actualités des marchés, à voix haute."}
           </p>
         </div>
-        <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${status?.online ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
+        <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${status?.online ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}
           title={status?.reason ?? ""}>
-          {status == null ? "…" : status.online ? `En ligne · ${status.model}` : "Hors-ligne"}
+          {status == null ? "…" : status.online ? `IA en ligne · ${status.model}` : "Mode local · actualités Google News"}
         </span>
         <button onClick={() => setWebOn(!webOn)} title="Recherche web pour les actualités"
           className={`flex items-center gap-1 text-[11px] font-medium px-2.5 py-1.5 rounded-lg border ${webOn ? "border-blue-300 bg-white text-blue-700" : "border-border text-muted-foreground"}`}>
@@ -163,9 +163,9 @@ export default function AssistantPanel() {
       </div>
 
       {status && !status.online && (
-        <div className="px-5 py-2.5 bg-amber-50 border-b border-amber-100 text-[11px] text-amber-800">
-          Mode hors-ligne ({status.reason}). Atlas résume vos agents mais ne peut ni discuter librement ni lire l'actualité.
-          Pour l'activer : définir la variable d'environnement <b>ANTHROPIC_API_KEY</b> puis redémarrer le backend.
+        <div className="px-5 py-2 bg-blue-50/60 border-b border-blue-100 text-[11px] text-blue-800">
+          Mode local : Atlas lit les actualités en direct (Google News), fait vos briefings et explique vos agents et les notions de finance.
+          Pour une conversation totalement libre avec l'IA Claude, ajoutez la variable d'environnement <b>ANTHROPIC_API_KEY</b>.
         </div>
       )}
 
@@ -216,7 +216,7 @@ export default function AssistantPanel() {
                       </button>
                     )}
                     {t.meta.webSearchUsed && <span>🌐 actualités consultées</span>}
-                    {!t.meta.online && <span>mode hors-ligne</span>}
+                    {!t.meta.online && <span>mode local</span>}
                     {t.meta.notice && <span className="text-amber-600">{t.meta.notice}</span>}
                   </div>
                 </div>
