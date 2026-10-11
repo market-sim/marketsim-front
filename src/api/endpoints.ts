@@ -217,6 +217,18 @@ export interface ReplayResult {
   days: ReplayDay[]; agentReturn: number; benchmarkReturn: number; agentMaxDrawdown: number; agentTrades: number;
 }
 
+export interface AssistantMessage { role: "user" | "assistant"; content: string }
+export interface AssistantReply {
+  reply: string; sources: { title: string; url: string }[]; online: boolean; webSearchUsed: boolean;
+  model: string; notice: string | null;
+}
+
+export const assistantApi = {
+  status: () => api.get<{ online: boolean; model: string; reason: string | null }>("/agents/assistant/status").then((r) => r.data),
+  chat: (messages: AssistantMessage[], webSearch: boolean) =>
+    api.post<AssistantReply>("/agents/assistant/chat", { messages, webSearch }).then((r) => r.data),
+};
+
 export interface TournamentCompetitor {
   rank: number; agentId: number | null; name: string; strategy: AgentStrategy | null; riskLevel: number;
   meanReturn: number; medianReturn: number; stdReturn: number; var95: number; cvar95: number; probProfit: number;
