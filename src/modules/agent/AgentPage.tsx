@@ -1,20 +1,22 @@
 import { useEffect, useState } from "react";
-import { Bot, Brain, Dices, GraduationCap, Pencil, Plus, Trash2 } from "lucide-react";
+import { Bot, Brain, Dices, GraduationCap, Pencil, Plus, Trash2, Trophy } from "lucide-react";
 import { agentsApi, assetsApi, type AgentConfig, type Asset } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
 import { CardShell, DISPLAY } from "../../shared/ui";
 import AgentFormModal from "./components/AgentFormModal";
 import DecisionsPanel from "./components/DecisionsPanel";
 import MonteCarloPanel from "./components/MonteCarloPanel";
+import TournamentPanel from "./components/TournamentPanel";
 import TrainingPanel from "./components/TrainingPanel";
 import { strategyLabel, strategyShort } from "./format";
 
-type Tab = "decisions" | "montecarlo" | "training";
+type Tab = "decisions" | "montecarlo" | "training" | "tournament";
 
 const TABS: { id: Tab; label: string; Icon: typeof Brain }[] = [
   { id: "decisions", label: "Décisions & XAI", Icon: Brain },
   { id: "montecarlo", label: "Monte Carlo", Icon: Dices },
   { id: "training", label: "Entraînement RL", Icon: GraduationCap },
+  { id: "tournament", label: "Tournoi", Icon: Trophy },
 ];
 
 /** Module 6 : Agent de Trading Intelligent. */
@@ -175,6 +177,7 @@ export default function AgentPage() {
             {tab === "decisions" && <DecisionsPanel agent={agent} />}
             {tab === "montecarlo" && <MonteCarloPanel agent={agent} />}
             {tab === "training" && <TrainingPanel agent={agent} onTrained={() => load()} />}
+            {tab === "tournament" && <TournamentPanel agents={agents} assets={assets} />}
           </div>
         </div>
       )}

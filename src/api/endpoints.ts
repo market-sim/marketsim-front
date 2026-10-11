@@ -198,6 +198,40 @@ export interface TrainingResult {
   };
 }
 
+export interface TournamentCompetitor {
+  rank: number; agentId: number | null; name: string; strategy: AgentStrategy | null; riskLevel: number;
+  meanReturn: number; medianReturn: number; stdReturn: number; var95: number; cvar95: number; probProfit: number;
+  meanSharpe: number; meanMaxDrawdown: number; avgTrades: number;
+  q05: number; q25: number; q50: number; q75: number; q95: number;
+}
+
+export interface PairwiseTest {
+  a: number; b: number; nameA: string; nameB: string; meanDiff: number; ciLow: number; ciHigh: number;
+  tStat: number; pValue: number; pHolm: number; pBootstrap: number; pSign: number; winRate: number;
+  cohenD: number; varianceFactor: number; significant: boolean; verdict: string;
+}
+
+export interface TournamentResult {
+  runId: number; symbol: string; model: PriceModel; paths: number; horizonDays: number; seed: number;
+  antithetic: boolean; elapsedMs: number; bootstrapSamples: number;
+  ranking: TournamentCompetitor[];
+  medianEquity: { day: number; values: number[] }[];
+  returnTests: PairwiseTest[];
+  sharpeTests: PairwiseTest[];
+  conclusion: string;
+}
+
+export interface TournamentRun {
+  id: number; agentIds: string; ranking: string; winner: string; symbol: string; model: PriceModel;
+  paths: number; horizonDays: number; seed: number; antithetic: boolean; conclusion: string; elapsedMs: number;
+  createdAt: string;
+}
+
+export interface TournamentRequest {
+  agentIds: number[]; symbol: string; paths: number; horizonDays: number; model: PriceModel;
+  seed?: number | null; antithetic: boolean;
+}
+
 export const agentsApi = {
   list: () => api.get<AgentConfig[]>("/agents").then((r) => r.data),
   create: (a: AgentConfig) => api.post<AgentConfig>("/agents", a).then((r) => r.data),
@@ -217,6 +251,9 @@ export const agentsApi = {
   train: (id: number, req: { symbol: string; episodes: number; model: PriceModel; seed?: number | null }) =>
     api.post<TrainingResult>(`/agents/${id}/train`, req).then((r) => r.data),
   policy: (id: number) => api.get<PolicyState[]>(`/agents/${id}/policy`).then((r) => r.data),
+  // IA : tournoi entre agents + tests statistiques
+  tournament: (req: TournamentRequest) => api.post<TournamentResult>("/agents/tournaments", req).then((r) => r.data),
+  tournaments: () => api.get<TournamentRun[]>("/agents/tournaments").then((r) => r.data),
 };
 
 // ─── Module 7 : Stress Testing Bancaire & Actuariat ──────────────────────────
