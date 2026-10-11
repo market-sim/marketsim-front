@@ -157,6 +157,11 @@ export interface MonteCarloRequest {
   antithetic: boolean;
   mu?: number | null;
   sigma?: number | null;
+  /** Scenario "et si ?" : krach en % (20 = -20 %) */
+  crashPct?: number | null;
+  crashDay?: number | null;
+  volMultiplier?: number | null;
+  volDays?: number | null;
 }
 
 export interface RiskSummary {
@@ -174,12 +179,14 @@ export interface MonteCarloResult {
   histogram: { from: number; to: number; agent: number; benchmark: number }[];
   convergence: { paths: number; mean: number; lower: number; upper: number }[];
   samplePaths: number[][];
+  crashPct: number | null; crashDay: number | null; volMultiplier: number | null; volDays: number | null;
 }
 
 export interface MonteCarloRun {
   id: number; symbol: string; strategy: AgentStrategy; model: PriceModel; paths: number; horizonDays: number;
   seed: number; antithetic: boolean; mu: number | null; sigma: number | null; meanReturn: number; var95: number; cvar95: number; probProfit: number;
   probBeatBenchmark: number; benchmarkMeanReturn: number; meanSharpe: number; meanMaxDrawdown: number;
+  winRate: number; crashPct: number | null; crashDay: number | null; volMultiplier: number | null; volDays: number | null;
   elapsedMs: number; createdAt: string;
 }
 
@@ -196,6 +203,18 @@ export interface TrainingResult {
     paths: number; meanReturn: number; benchmarkMeanReturn: number; probBeatBenchmark: number;
     meanSharpe: number; benchmarkMeanSharpe: number; meanMaxDrawdown: number; benchmarkMeanMaxDrawdown: number;
   };
+}
+
+export interface ReplayDay {
+  day: number; price: number; action: AgentAction; confidence: number;
+  /** 0 rien · 1 achat · 2 vente · 3 stop-loss · 4 take-profit */
+  event: number; agentPosition: number; agentEquity: number; benchmarkEquity: number;
+}
+
+export interface ReplayResult {
+  symbol: string; model: PriceModel; seed: number; horizonDays: number; capital: number;
+  positionFraction: number; costRate: number; crashDay: number | null; context: number[];
+  days: ReplayDay[]; agentReturn: number; benchmarkReturn: number; agentMaxDrawdown: number; agentTrades: number;
 }
 
 export interface TournamentCompetitor {
@@ -251,6 +270,9 @@ export const agentsApi = {
   train: (id: number, req: { symbol: string; episodes: number; model: PriceModel; seed?: number | null }) =>
     api.post<TrainingResult>(`/agents/${id}/train`, req).then((r) => r.data),
   policy: (id: number) => api.get<PolicyState[]>(`/agents/${id}/policy`).then((r) => r.data),
+  // Demo : replay humain vs agent
+  replay: (id: number, req: { symbol: string; days: number; model: PriceModel; seed?: number | null; crashPct?: number | null }) =>
+    api.post<ReplayResult>(`/agents/${id}/replay`, req).then((r) => r.data),
   // IA : tournoi entre agents + tests statistiques
   tournament: (req: TournamentRequest) => api.post<TournamentResult>("/agents/tournaments", req).then((r) => r.data),
   tournaments: () => api.get<TournamentRun[]>("/agents/tournaments").then((r) => r.data),

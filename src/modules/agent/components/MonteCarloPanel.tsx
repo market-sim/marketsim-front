@@ -3,7 +3,7 @@ import {
   Area, Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ReferenceLine,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Dices, Play, RotateCcw } from "lucide-react";
+import { Dices, Play, RotateCcw, Zap } from "lucide-react";
 import {
   agentsApi, type AgentConfig, type MonteCarloRequest, type MonteCarloResult, type MonteCarloRun, type PriceModel,
 } from "../../../api/endpoints";
@@ -13,6 +13,13 @@ import { inputClass, labelClass, modelLabel, pctPlain, pctSigned, strategyShort 
 
 const tooltipStyle = { background: "#fff", border: "1px solid #E2E8F0", borderRadius: "8px", fontSize: "11px" };
 const axisTick = { fontSize: 10, fill: "#94A3B8" };
+/** Scenarios predefinis (pre-remplissent le formulaire). */
+const CRASH_PRESETS: { label: string; values: Pick<MonteCarloRequest, "crashPct" | "volMultiplier" | "volDays" | "crashDay"> }[] = [
+  { label: "Aucun", values: { crashPct: null, volMultiplier: null, volDays: null, crashDay: null } },
+  { label: "Flash crash −10 %", values: { crashPct: 10, volMultiplier: 1.5, volDays: 5, crashDay: null } },
+  { label: "Krach −20 %", values: { crashPct: 20, volMultiplier: 2, volDays: 20, crashDay: null } },
+  { label: "Type 2008 −40 %", values: { crashPct: 40, volMultiplier: 3, volDays: 60, crashDay: null } },
+];
 const SAMPLE_COLORS = ["#60A5FA", "#A78BFA", "#F472B6", "#FBBF24", "#34D399", "#F87171", "#22D3EE", "#A3E635"];
 
 function fmtTooltip(v: unknown) {
@@ -35,7 +42,7 @@ export default function MonteCarloPanel({ agent }: { agent: AgentConfig }) {
   const symbols = agent.allowedAssets.split(",").map((s) => s.trim()).filter(Boolean);
   const [form, setForm] = useState<MonteCarloRequest>({
     symbol: symbols[0] ?? "AAPL", paths: 2000, horizonDays: 252, model: "REGIME_SWITCHING", antithetic: true, seed: null,
-    mu: null, sigma: null,
+    mu: null, sigma: null, crashPct: null, crashDay: null, volMultiplier: null, volDays: null,
   });
   const [result, setResult] = useState<MonteCarloResult | null>(null);
   const [runs, setRuns] = useState<MonteCarloRun[]>([]);
@@ -70,6 +77,7 @@ export default function MonteCarloPanel({ agent }: { agent: AgentConfig }) {
     const req: MonteCarloRequest = {
       symbol: r.symbol, paths: r.paths, horizonDays: r.horizonDays, model: r.model, seed: r.seed, antithetic: r.antithetic,
       mu: r.mu, sigma: r.sigma,
+      crashPct: r.crashPct, crashDay: r.crashDay, volMultiplier: r.volMultiplier, volDays: r.volDays,
     };
     setForm(req);
     run(req);
@@ -153,6 +161,43 @@ export default function MonteCarloPanel({ agent }: { agent: AgentConfig }) {
             </button>
           </div>
         </div>
+        {/* Scenario "et si ?" */}
+        <div className={`mt-4 rounded-lg border p-3 ${form.crashPct ? "border-red-200 bg-red-50/50" : "border-dashed border-border"}`}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Zap className={`w-4 h-4 ${form.crashPct ? "text-red-500" : "text-muted-foreground"}`} />
+            <span className="text-[12px] font-semibold text-foreground">Scénario « et si le marché crashait ? »</span>
+            <div className="flex flex-wrap gap-1.5 ml-auto">
+              {CRASH_PRESETS.map((p) => (
+                <button key={p.label} type="button" onClick={() => setForm({ ...form, ...p.values })}
+                  className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${form.crashPct === p.values.crashPct && form.volMultiplier === p.values.volMultiplier ? "bg-red-500 border-red-500 text-white" : "border-border text-muted-foreground hover:border-red-300"}`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {form.crashPct ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+              <div>
+                <label className={labelClass}>Krach (%)</label>
+                <input type="number" min={1} max={90} value={form.crashPct} onChange={(e) => setForm({ ...form, crashPct: Number(e.target.value) || null })} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Jour du krach</label>
+                <input type="number" min={1} max={form.horizonDays} placeholder={String(Math.round(form.horizonDays / 4))} value={form.crashDay ?? ""} onChange={(e) => setForm({ ...form, crashDay: e.target.value ? Number(e.target.value) : null })} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Volatilité après (×)</label>
+                <input type="number" min={1} max={5} step={0.5} value={form.volMultiplier ?? 2} onChange={(e) => setForm({ ...form, volMultiplier: Number(e.target.value) })} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Durée panique (j)</label>
+                <input type="number" min={0} max={form.horizonDays} value={form.volDays ?? 20} onChange={(e) => setForm({ ...form, volDays: Number(e.target.value) })} className={inputClass} />
+              </div>
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted-foreground mt-1">Choisissez un scénario pour imposer un krach à toutes les trajectoires et voir comment l'agent réagit.</p>
+          )}
+        </div>
         {error && <p className="text-xs text-red-600 mt-3">{error}</p>}
       </CardShell>
 
@@ -175,7 +220,10 @@ export default function MonteCarloPanel({ agent }: { agent: AgentConfig }) {
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <div>
                 <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>Cône de projection du portefeuille (base 100)</h3>
-                <p className="text-[11px] text-muted-foreground">{modelLabel[result.model]} · μ {pctSigned(result.mu, 0)} · σ {pctPlain(result.sigma, 0)} · départ {result.startPrice.toLocaleString("en-US")}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {modelLabel[result.model]} · μ {pctSigned(result.mu, 0)} · σ {pctPlain(result.sigma, 0)} · départ {result.startPrice.toLocaleString("en-US")}
+                  {result.crashPct != null && <span className="text-red-600 font-medium"> · krach −{result.crashPct} % au jour {result.crashDay} (vol ×{result.volMultiplier} pendant {result.volDays} j)</span>}
+                </p>
               </div>
               <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
                 <input type="checkbox" checked={showSamples} onChange={(e) => setShowSamples(e.target.checked)} className="accent-blue-600" />
@@ -190,6 +238,10 @@ export default function MonteCarloPanel({ agent }: { agent: AgentConfig }) {
                 <Tooltip contentStyle={tooltipStyle} formatter={fmtTooltip} labelFormatter={(d) => `Jour ${d}`} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <ReferenceLine y={100} stroke="#CBD5E1" />
+                {result.crashDay != null && (
+                  <ReferenceLine x={result.crashDay} stroke="#DC2626" strokeDasharray="4 3"
+                    label={{ value: `Krach −${result.crashPct} %`, position: "insideTopRight", fontSize: 10, fill: "#DC2626" }} />
+                )}
                 <Area dataKey="band90" name="Intervalle 5–95 %" stroke="none" fill="#2563EB" fillOpacity={0.1} isAnimationActive={false} />
                 <Area dataKey="band50" name="Intervalle 25–75 %" stroke="none" fill="#2563EB" fillOpacity={0.22} isAnimationActive={false} />
                 {showSamples && result.samplePaths.map((_, k) => (
@@ -299,7 +351,10 @@ export default function MonteCarloPanel({ agent }: { agent: AgentConfig }) {
                 {runs.map((r) => (
                   <tr key={r.id} className="hover:bg-muted/10">
                     <td className="px-5 py-2 text-muted-foreground">{new Date(r.createdAt).toLocaleString("fr-FR")}</td>
-                    <td className="px-3 py-2 text-foreground">{r.symbol} · {r.model.replace("_", " ").toLowerCase()}</td>
+                    <td className="px-3 py-2 text-foreground">
+                      {r.symbol} · {r.model.replace("_", " ").toLowerCase()}
+                      {r.crashPct != null && <span className="ml-1.5 text-[10px] font-semibold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">krach −{r.crashPct}%</span>}
+                    </td>
                     <td className="px-3 py-2 text-right" style={MONO}>{r.paths}</td>
                     <td className={`px-3 py-2 text-right ${r.meanReturn >= 0 ? "text-emerald-600" : "text-red-500"}`} style={MONO}>{pctSigned(r.meanReturn)}</td>
                     <td className="px-3 py-2 text-right" style={MONO}>{pctPlain(r.var95)}</td>

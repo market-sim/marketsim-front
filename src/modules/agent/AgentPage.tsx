@@ -1,22 +1,24 @@
 import { useEffect, useState } from "react";
-import { Bot, Brain, Dices, GraduationCap, Pencil, Plus, Trash2, Trophy } from "lucide-react";
+import { Bot, Brain, Dices, Gamepad2, GraduationCap, Pencil, Plus, Trash2, Trophy } from "lucide-react";
 import { agentsApi, assetsApi, type AgentConfig, type Asset } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
 import { CardShell, DISPLAY } from "../../shared/ui";
 import AgentFormModal from "./components/AgentFormModal";
 import DecisionsPanel from "./components/DecisionsPanel";
 import MonteCarloPanel from "./components/MonteCarloPanel";
+import ReplayPanel from "./components/ReplayPanel";
 import TournamentPanel from "./components/TournamentPanel";
 import TrainingPanel from "./components/TrainingPanel";
-import { strategyLabel, strategyShort } from "./format";
+import { personalities, personalityOf, strategyLabel, strategyShort } from "./format";
 
-type Tab = "decisions" | "montecarlo" | "training" | "tournament";
+type Tab = "decisions" | "montecarlo" | "training" | "tournament" | "replay";
 
 const TABS: { id: Tab; label: string; Icon: typeof Brain }[] = [
   { id: "decisions", label: "Décisions & XAI", Icon: Brain },
   { id: "montecarlo", label: "Monte Carlo", Icon: Dices },
   { id: "training", label: "Entraînement RL", Icon: GraduationCap },
   { id: "tournament", label: "Tournoi", Icon: Trophy },
+  { id: "replay", label: "Replay vs Agent", Icon: Gamepad2 },
 ];
 
 /** Module 6 : Agent de Trading Intelligent. */
@@ -128,6 +130,7 @@ export default function AgentPage() {
 
             <div>
               {[
+                { label: "Personnalité", value: `${personalities[personalityOf(agent.riskLevel)].emoji} ${personalities[personalityOf(agent.riskLevel)].label}` },
                 { label: "Stratégie", value: strategyLabel[agent.strategy] },
                 { label: "Actifs", value: agent.allowedAssets.split(",").join(", ") },
                 { label: "Capital / position", value: `$${Number(agent.maxPositionSize).toLocaleString("en-US")}` },
@@ -166,7 +169,7 @@ export default function AgentPage() {
 
           {/* Laboratoire IA */}
           <div className="xl:col-span-3 space-y-4">
-            <div className="flex gap-1 bg-white rounded-xl border border-border/60 p-1 w-fit">
+            <div className="flex flex-wrap gap-1 bg-white rounded-xl border border-border/60 p-1 w-fit">
               {TABS.map(({ id, label, Icon }) => (
                 <button key={id} onClick={() => setTab(id)}
                   className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${tab === id ? "bg-blue-600 text-white" : "text-muted-foreground hover:bg-muted/50"}`}>
@@ -178,6 +181,7 @@ export default function AgentPage() {
             {tab === "montecarlo" && <MonteCarloPanel agent={agent} />}
             {tab === "training" && <TrainingPanel agent={agent} onTrained={() => load()} />}
             {tab === "tournament" && <TournamentPanel agents={agents} assets={assets} />}
+            {tab === "replay" && <ReplayPanel agent={agent} />}
           </div>
         </div>
       )}

@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import type { AgentConfig, AgentStrategy, Asset } from "../../../api/endpoints";
 import { errorMessage } from "../../../api/client";
 import { DISPLAY } from "../../../shared/ui";
-import { inputClass, labelClass, strategyLabel } from "../format";
+import { inputClass, labelClass, personalities, personalityOf, strategyLabel, type Personality } from "../format";
 
 interface Props {
   initial?: AgentConfig;
@@ -26,6 +26,13 @@ export default function AgentFormModal({ initial, assets, onSave, onClose }: Pro
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const selected = form.allowedAssets.split(",").map((s) => s.trim()).filter(Boolean);
+  const current = personalityOf(form.riskLevel);
+
+  /** Une personnalite pre-remplit risque, capital et strategie (modifiables ensuite). */
+  const applyPersonality = (p: Personality) => {
+    const preset = personalities[p];
+    setForm({ ...form, riskLevel: preset.riskLevel, maxPositionSize: preset.maxPositionSize, strategy: form.strategy === "Q_LEARNING" ? "Q_LEARNING" : preset.strategy });
+  };
 
   const toggleAsset = (symbol: string) => {
     const next = selected.includes(symbol) ? selected.filter((s) => s !== symbol) : [...selected, symbol];
@@ -59,6 +66,20 @@ export default function AgentFormModal({ initial, assets, onSave, onClose }: Pro
         <div>
           <label className={labelClass}>Nom</label>
           <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} placeholder="Agent Alpha-7" />
+        </div>
+
+        <div>
+          <label className={labelClass}>Personnalité</label>
+          <div className="grid grid-cols-3 gap-2">
+            {(Object.keys(personalities) as Personality[]).map((p) => (
+              <button type="button" key={p} onClick={() => applyPersonality(p)} title={personalities[p].description}
+                className={`rounded-lg border px-2 py-2 text-center transition-colors ${current === p ? "border-blue-500 bg-blue-50" : "border-border hover:border-blue-300"}`}>
+                <div className="text-lg leading-none">{personalities[p].emoji}</div>
+                <div className={`text-[12px] font-semibold mt-1 ${current === p ? "text-blue-700" : "text-foreground"}`}>{personalities[p].label}</div>
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-1">{personalities[current].description} — vous pouvez ensuite ajuster chaque paramètre.</p>
         </div>
 
         <div>
