@@ -108,14 +108,94 @@ export const assetsApi = {
 };
 
 // ─── Module 6 : Agent de Trading Intelligent ─────────────────────────────────
+export type AgentStrategy = "MOMENTUM" | "MEAN_REVERSION" | "Q_LEARNING";
+export type AgentAction = "BUY" | "SELL" | "HOLD";
+export type PriceModel = "GBM" | "JUMP_DIFFUSION" | "REGIME_SWITCHING";
+
 export interface AgentConfig {
   id?: number;
   name: string;
-  strategy?: string;
-  riskLevel?: number;
-  allowedAssets?: string;
-  maxPositionSize?: number;
+  strategy: AgentStrategy;
+  riskLevel: number;
+  allowedAssets: string;
+  maxPositionSize: number;
   active?: boolean;
+  trained?: boolean;
+  trainedEpisodes?: number | null;
+  trainedOn?: string | null;
+  trainedAt?: string | null;
+  createdAt?: string;
+}
+
+export interface Contribution { feature: string; label: string; value: number; contribution: number }
+
+export interface AgentDecision {
+  id: number;
+  symbol: string;
+  action: AgentAction;
+  quantity: number;
+  price: number;
+  confidence: number;
+  score: number;
+  stopLoss: number | null;
+  takeProfit: number | null;
+  explanation: string;
+  contributions: Contribution[];
+  qValues: number[] | null;
+  orderId: number | null;
+  userRating: number | null;
+  userComment: string | null;
+  createdAt: string;
+}
+
+export interface MonteCarloRequest {
+  symbol: string;
+  paths: number;
+  horizonDays: number;
+  model: PriceModel;
+  seed?: number | null;
+  antithetic: boolean;
+  mu?: number | null;
+  sigma?: number | null;
+}
+
+export interface RiskSummary {
+  meanReturn: number; medianReturn: number; stdReturn: number;
+  var95: number; cvar95: number; var99: number; probProfit: number;
+  meanMaxDrawdown: number; worstMaxDrawdown: number; meanSharpe: number;
+}
+
+export interface MonteCarloResult {
+  runId: number; symbol: string; model: PriceModel; paths: number; horizonDays: number; seed: number;
+  antithetic: boolean; mu: number; sigma: number; startPrice: number; elapsedMs: number;
+  agent: RiskSummary; benchmark: RiskSummary;
+  probBeatBenchmark: number; avgTrades: number; winRate: number; avgExposure: number;
+  fan: { day: number; p5: number; p25: number; p50: number; p75: number; p95: number; benchmarkP50: number }[];
+  histogram: { from: number; to: number; agent: number; benchmark: number }[];
+  convergence: { paths: number; mean: number; lower: number; upper: number }[];
+  samplePaths: number[][];
+}
+
+export interface MonteCarloRun {
+  id: number; symbol: string; strategy: AgentStrategy; model: PriceModel; paths: number; horizonDays: number;
+  seed: number; antithetic: boolean; mu: number | null; sigma: number | null; meanReturn: number; var95: number; cvar95: number; probProfit: number;
+  probBeatBenchmark: number; benchmarkMeanReturn: number; meanSharpe: number; meanMaxDrawdown: number;
+  elapsedMs: number; createdAt: string;
+}
+
+export interface PolicyState {
+  state: number; description: string; trend: number; rsi: number; volatility: number; position: number;
+  best: AgentAction; q: number[]; visits: number;
+}
+
+export interface TrainingResult {
+  symbol: string; model: PriceModel; episodes: number; seed: number; elapsedMs: number;
+  curve: { episode: number; avgReward: number; avgReturn: number; benchmarkReturn: number; epsilon: number }[];
+  policy: PolicyState[];
+  evaluation: {
+    paths: number; meanReturn: number; benchmarkMeanReturn: number; probBeatBenchmark: number;
+    meanSharpe: number; benchmarkMeanSharpe: number; meanMaxDrawdown: number; benchmarkMeanMaxDrawdown: number;
+  };
 }
 
 export const agentsApi = {
@@ -124,6 +204,19 @@ export const agentsApi = {
   update: (id: number, a: AgentConfig) => api.put<AgentConfig>(`/agents/${id}`, a).then((r) => r.data),
   toggle: (id: number) => api.patch<AgentConfig>(`/agents/${id}/toggle`).then((r) => r.data),
   remove: (id: number) => api.delete(`/agents/${id}`),
+  // IA : decisions expliquees (XAI)
+  decide: (id: number) => api.post<AgentDecision[]>(`/agents/${id}/decide`).then((r) => r.data),
+  decisions: (id: number) => api.get<AgentDecision[]>(`/agents/${id}/decisions`).then((r) => r.data),
+  rate: (decisionId: number, rating: number, comment?: string) =>
+    api.patch<AgentDecision>(`/agents/decisions/${decisionId}/rating`, { rating, comment }).then((r) => r.data),
+  // IA : simulation Monte Carlo
+  monteCarlo: (id: number, req: MonteCarloRequest) =>
+    api.post<MonteCarloResult>(`/agents/${id}/montecarlo`, req).then((r) => r.data),
+  monteCarloRuns: (id: number) => api.get<MonteCarloRun[]>(`/agents/${id}/montecarlo/runs`).then((r) => r.data),
+  // IA : apprentissage par renforcement
+  train: (id: number, req: { symbol: string; episodes: number; model: PriceModel; seed?: number | null }) =>
+    api.post<TrainingResult>(`/agents/${id}/train`, req).then((r) => r.data),
+  policy: (id: number) => api.get<PolicyState[]>(`/agents/${id}/policy`).then((r) => r.data),
 };
 
 // ─── Module 7 : Stress Testing Bancaire & Actuariat ──────────────────────────
