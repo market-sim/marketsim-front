@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bot, Brain, Dices, Gamepad2, GraduationCap, Pencil, Plus, Sparkles, Trash2, Trophy } from "lucide-react";
+import { Bot, Brain, Dices, Gamepad2, GraduationCap, Pencil, Plus, Sparkles, Trash2, Trophy, Wand2 } from "lucide-react";
 import { agentsApi, assetsApi, type AgentConfig, type AnomalyReport, type Asset } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
 import { CardShell, DISPLAY } from "../../shared/ui";
@@ -33,6 +33,7 @@ export default function AgentPage() {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [reports, setReports] = useState<AnomalyReport[]>([]);
+  const [demoBusy, setDemoBusy] = useState(false);
   const loadReports = () => agentsApi.allAnomalies().then(setReports).catch(() => setReports([]));
 
   const load = async (selectId?: number) => {
@@ -73,6 +74,36 @@ export default function AgentPage() {
     load();
   };
 
+  /** Remplit le compte avec 4 agents de demonstration, puis ouvre la demo de surveillance. */
+  const generateDemo = async () => {
+    setDemoBusy(true);
+    setError("");
+    try {
+      const d = await agentsApi.demo();
+      // resultats deja calcules : affiches directement dans les onglets Tournoi et Monte Carlo
+      try {
+        sessionStorage.setItem("marketsim:tournament:last", JSON.stringify(d.tournament));
+        sessionStorage.setItem(`marketsim:mc:${d.rlAgentId}`, JSON.stringify(d.rlMonteCarlo));
+      } catch {
+        // stockage indisponible : les resultats restent consultables en relancant
+      }
+      await load(d.surveillanceAgentId);
+      await loadReports();
+      setTab("decisions");
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setDemoBusy(false);
+    }
+  };
+
+  const demoButton = (
+    <button onClick={generateDemo} disabled={demoBusy} title="Crée 4 agents avec décisions, entraînement, Monte Carlo, tournoi et une alerte de surveillance"
+      className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-60">
+      <Wand2 className="w-4 h-4" />{demoBusy ? "Génération (quelques secondes)…" : "Générer des données de démo"}
+    </button>
+  );
+
   const modalEl = modal && (
     <AgentFormModal initial={modal === "edit" ? agent ?? undefined : undefined} assets={assets} onSave={save} onClose={() => setModal(null)} />
   );
@@ -90,9 +121,12 @@ export default function AgentPage() {
             de scénarios Monte Carlo et peut apprendre par renforcement.
           </p>
           {error && <p className="text-xs text-red-600 mt-3">{error}</p>}
-          <button onClick={() => setModal("create")} className="mt-5 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg px-4 py-2">
-            <Plus className="w-4 h-4" />Créer mon premier agent
-          </button>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+            <button onClick={() => setModal("create")} className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg px-4 py-2">
+              <Plus className="w-4 h-4" />Créer mon premier agent
+            </button>
+            {demoButton}
+          </div>
         </CardShell>
         {modalEl}
       </>
@@ -119,7 +153,9 @@ export default function AgentPage() {
         <button onClick={() => setModal("create")} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-blue-600 font-medium hover:bg-blue-50">
           <Plus className="w-4 h-4" />Nouvel agent
         </button>
+        {demoButton}
       </div>
+      {error && <p className="text-xs text-red-600">{error}</p>}
 
       {agent && (
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 items-start">

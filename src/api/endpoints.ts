@@ -292,6 +292,9 @@ export const agentsApi = {
   remove: (id: number) => api.delete(`/agents/${id}`),
   // IA : decisions expliquees (XAI)
   decide: (id: number, rounds = 1) => api.post<AgentDecision[]>(`/agents/${id}/decide`, null, { params: { rounds } }).then((r) => r.data),
+  // Donnees de demonstration (soutenance)
+  demo: () => api.post<{ agentIds: number[]; surveillanceAgentId: number; rlAgentId: number; surveillance: AnomalyReport;
+    rlMonteCarlo: MonteCarloResult; tournament: TournamentResult }>("/agents/demo").then((r) => r.data),
   // IA : surveillance comportementale (detection d'anomalies)
   anomalies: (id: number) => api.get<AnomalyReport>(`/agents/${id}/anomalies`).then((r) => r.data),
   allAnomalies: () => api.get<AnomalyReport[]>("/agents/anomalies").then((r) => r.data),
