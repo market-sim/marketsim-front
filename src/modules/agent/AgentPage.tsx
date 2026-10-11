@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Bot, Brain, Dices, Gamepad2, GraduationCap, Pencil, Plus, Sparkles, Trash2, Trophy, Wand2 } from "lucide-react";
+import { Bot, Brain, Dices, Gamepad2, GraduationCap, Pencil, Plus, Power, Sparkles, Trash2, Trophy, Wand2 } from "lucide-react";
 import { agentsApi, assetsApi, type AgentConfig, type AnomalyReport, type Asset } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
 import { CardShell, DISPLAY } from "../../shared/ui";
 import AgentFormModal from "./components/AgentFormModal";
 import AssistantPanel from "./components/AssistantPanel";
+import AutopilotPanel from "./components/AutopilotPanel";
 import DecisionsPanel from "./components/DecisionsPanel";
 import MonteCarloPanel from "./components/MonteCarloPanel";
 import ReplayPanel from "./components/ReplayPanel";
@@ -12,10 +13,11 @@ import TournamentPanel from "./components/TournamentPanel";
 import TrainingPanel from "./components/TrainingPanel";
 import { personalities, personalityOf, strategyLabel, strategyShort } from "./format";
 
-type Tab = "assistant" | "decisions" | "montecarlo" | "training" | "tournament" | "replay";
+type Tab = "assistant" | "autopilot" | "decisions" | "montecarlo" | "training" | "tournament" | "replay";
 
 const TABS: { id: Tab; label: string; Icon: typeof Brain }[] = [
   { id: "assistant", label: "Assistant IA", Icon: Sparkles },
+  { id: "autopilot", label: "Pilote auto", Icon: Power },
   { id: "decisions", label: "Décisions & XAI", Icon: Brain },
   { id: "montecarlo", label: "Monte Carlo", Icon: Dices },
   { id: "training", label: "Entraînement RL", Icon: GraduationCap },
@@ -223,7 +225,8 @@ export default function AgentPage() {
                 </button>
               ))}
             </div>
-            {tab === "assistant" && <AssistantPanel />}
+            {tab === "assistant" && <AssistantPanel agentId={agent.id} agentName={agent.name} />}
+            {tab === "autopilot" && <AutopilotPanel agent={agent} />}
             {tab === "decisions" && <DecisionsPanel agent={agent} onChange={loadReports} />}
             {tab === "montecarlo" && <MonteCarloPanel agent={agent} />}
             {tab === "training" && <TrainingPanel agent={agent} onTrained={() => load()} />}

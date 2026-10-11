@@ -1,12 +1,51 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { ExternalLink, Globe, Mic, MicOff, Send, Sparkles, Square, Volume2, VolumeX } from "lucide-react";
-import { assistantApi, type AssistantMessage, type AssistantReply } from "../../../api/endpoints";
+import { ExternalLink, Globe, ImagePlus, Mic, MicOff, Send, Sparkles, Square, Volume2, VolumeX, X } from "lucide-react";
+import { assistantApi, type AssistantMessage, type AssistantReply, type ChartAnalysis } from "../../../api/endpoints";
 import { errorMessage } from "../../../api/client";
 import { CardShell, DISPLAY } from "../../../shared/ui";
 import { createRecognition, speak, sttSupported, ttsSupported } from "../speech";
+import ChartAnalysisCard from "./ChartAnalysisCard";
 
 interface Turn extends AssistantMessage {
   meta?: Pick<AssistantReply, "sources" | "online" | "webSearchUsed" | "notice">;
+  /** capture d'ecran envoyee (data URL, affichee dans la bulle) */
+  image?: string;
+  /** fiche d'analyse renvoyee pour une capture */
+  chart?: ChartAnalysis;
+}
+
+interface PendingImage { dataUrl: string; base64: string; mediaType: string }
+
+const MAX_SIDE = 1568;
+
+/** Redimensionne la capture (cote max 1568 px, JPEG) : analyse aussi precise, envoi plus rapide et moins couteux. */
+function prepareImage(file: File): Promise<PendingImage> {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith("image/")) {
+      reject(new Error("Ce fichier n'est pas une image."));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Lecture de l'image impossible."));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Image illisible."));
+      img.onload = () => {
+        const scale = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d")!;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+        resolve({ dataUrl, base64: dataUrl.split(",")[1], mediaType: "image/jpeg" });
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 const BRIEFING =
@@ -39,8 +78,11 @@ function RichText({ text }: { text: string }) {
   );
 }
 
-export default function AssistantPanel() {
+export default function AssistantPanel({ agentId, agentName }: { agentId?: number; agentName?: string }) {
   const [turns, setTurns] = useState<Turn[]>([]);
+  const [image, setImage] = useState<PendingImage | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -70,7 +112,49 @@ export default function AssistantPanel() {
     stopSpeech.current = speak(text, () => setSpeaking(true), () => setSpeaking(false));
   };
 
+  const attach = async (file: File | undefined | null) => {
+    if (!file) return;
+    setError("");
+    try {
+      setImage(await prepareImage(file));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  /** Capture d'ecran : analyse technique structuree par Claude vision. */
+  const analyzeImage = async (img: PendingImage, text: string) => {
+    stopSpeech.current();
+    const question = text.trim() || "Analyse ce graphique : faut-il acheter, attendre ou vendre ?";
+    const history: Turn[] = [...turns, { role: "user", content: question, image: img.dataUrl }];
+    setTurns(history);
+    setInput("");
+    setImage(null);
+    setBusy(true);
+    setError("");
+    try {
+      const r = await assistantApi.chart(img.base64, img.mediaType, question, agentId);
+      const summary = r.analysis.isChart
+        ? `Signal ${r.analysis.signal.toLowerCase()}, confiance ${r.analysis.confidence} %. ${r.analysis.summary}`
+        : r.analysis.summary;
+      setTurns([...history, { role: "assistant", content: summary, chart: r.analysis,
+        meta: { sources: [], online: true, webSearchUsed: false, notice: null } }]);
+      if (voiceOn) say(summary);
+    } catch (e) {
+      setError(errorMessage(e));
+      setTurns(turns);
+      setInput(text);
+      setImage(img);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const send = async (text: string) => {
+    if (image && !busy) {
+      await analyzeImage(image, text);
+      return;
+    }
     const content = text.trim();
     if (!content || busy) return;
     stopSpeech.current();
@@ -170,7 +254,15 @@ export default function AssistantPanel() {
       )}
 
       {/* Conversation */}
-      <div className="h-[460px] overflow-y-auto px-5 py-4 space-y-4 bg-slate-50/40">
+      <div className={`relative h-[460px] overflow-y-auto px-5 py-4 space-y-4 bg-slate-50/40 ${dragOver ? "ring-2 ring-inset ring-blue-400" : ""}`}
+        onDragOver={(e) => { if ([...e.dataTransfer.items].some((it) => it.type.startsWith("image/"))) { e.preventDefault(); setDragOver(true); } }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => { e.preventDefault(); setDragOver(false); attach(e.dataTransfer.files?.[0]); }}>
+        {dragOver && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-blue-500/10 text-blue-700 text-sm font-semibold pointer-events-none">
+            Déposez la capture du graphique ici
+          </div>
+        )}
         {turns.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center">
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-white mb-3" style={{ background: "linear-gradient(135deg, #2563EB, #7C3AED)" }}>
@@ -196,7 +288,9 @@ export default function AssistantPanel() {
               </div>
             )}
             <div className={`max-w-[80%] text-[13px] leading-relaxed rounded-2xl px-4 py-2.5 ${t.role === "user" ? "bg-blue-600 text-white rounded-br-sm" : "bg-white border border-border/60 text-slate-700 rounded-tl-sm"}`}>
-              {t.role === "user" ? <p className="whitespace-pre-wrap">{t.content}</p> : <RichText text={t.content} />}
+              {t.image && <img src={t.image} alt="Capture envoyée" className="rounded-lg mb-2 max-h-56 w-auto border border-white/30" />}
+              {t.role === "user" ? <p className="whitespace-pre-wrap">{t.content}</p>
+                : t.chart ? <ChartAnalysisCard a={t.chart} /> : <RichText text={t.content} />}
               {t.meta && (
                 <div className="mt-2 pt-2 border-t border-slate-100 space-y-1.5">
                   {t.meta.sources.length > 0 && (
@@ -234,7 +328,9 @@ export default function AssistantPanel() {
               <span className="flex gap-1">
                 {[0, 1, 2].map((d) => <span key={d} className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: `${d * 0.15}s` }} />)}
               </span>
-              <span className="text-[11px] text-muted-foreground">{webOn ? "Atlas lit l'actualité et analyse vos agents…" : "Atlas réfléchit…"}</span>
+              <span className="text-[11px] text-muted-foreground">
+                {turns[turns.length - 1]?.image ? "Atlas analyse votre graphique…" : webOn ? "Atlas lit l'actualité et analyse vos agents…" : "Atlas réfléchit…"}
+              </span>
             </div>
           </div>
         )}
@@ -251,7 +347,24 @@ export default function AssistantPanel() {
             </button>
           ))}
         </div>
+        {image && (
+          <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-2">
+            <img src={image.dataUrl} alt="Capture à analyser" className="h-14 w-auto rounded-md border border-border" />
+            <div className="flex-1 text-[11px] text-blue-800">
+              Capture prête{agentName ? ` · analysée du point de vue de « ${agentName} »` : ""}. Ajoutez une question ou envoyez directement.
+              {status && !status.online && <span className="block text-amber-700">L'analyse d'image demande la clé ANTHROPIC_API_KEY (mode local actuellement).</span>}
+            </div>
+            <button type="button" onClick={() => setImage(null)} title="Retirer" className="p-1 text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+          </div>
+        )}
         <form onSubmit={submit} className="flex items-center gap-2">
+          <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden"
+            onChange={(e) => { attach(e.target.files?.[0]); e.target.value = ""; }} />
+          <button type="button" onClick={() => fileInput.current?.click()} disabled={busy}
+            title="Envoyer une capture d'écran de graphique (vous pouvez aussi la coller avec Ctrl+V ou la glisser ici)"
+            className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-50">
+            <ImagePlus className="w-4 h-4" />
+          </button>
           {sttSupported() && (
             <button type="button" onClick={toggleMic} disabled={busy} title={listening ? "Arrêter l'écoute" : "Parler à Atlas"}
               className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-colors disabled:opacity-50 ${listening ? "bg-red-500 text-white animate-pulse" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
@@ -259,9 +372,13 @@ export default function AssistantPanel() {
             </button>
           )}
           <input value={input} onChange={(e) => setInput(e.target.value)} disabled={busy}
-            placeholder={listening ? "Parlez, je vous écoute…" : "Posez une question à Atlas…"}
+            onPaste={(e) => {
+              const file = [...e.clipboardData.items].find((it) => it.type.startsWith("image/"))?.getAsFile();
+              if (file) { e.preventDefault(); attach(file); }
+            }}
+            placeholder={listening ? "Parlez, je vous écoute…" : image ? "Question sur la capture (facultatif)…" : "Posez une question, ou collez une capture d'écran (Ctrl+V)…"}
             className="flex-1 bg-muted/30 border border-border rounded-xl px-4 py-2.5 text-sm text-foreground outline-none focus:border-blue-400" />
-          <button disabled={busy || !input.trim()} className="w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white flex items-center justify-center shrink-0">
+          <button disabled={busy || (!input.trim() && !image)} className="w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white flex items-center justify-center shrink-0">
             <Send className="w-4 h-4" />
           </button>
         </form>

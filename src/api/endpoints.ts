@@ -238,6 +238,43 @@ export const tickerApi = {
   get: () => api.get<{ quotes: TickerQuote[]; updatedAt: string; stale: boolean }>("/agents/ticker").then((r) => r.data),
 };
 
+// --- Pilote automatique ---
+export type AutopilotStatus = "RUNNING" | "PAUSED" | "STOPPED";
+export type AutopilotEventType = "STARTED" | "BUY" | "SELL" | "STOP_LOSS" | "TAKE_PROFIT" | "PAUSED" | "RESUMED" | "STOPPED"
+  | "LOSS_LIMIT" | "ORDER_LIMIT" | "ANOMALY_WARNING" | "KILL_SWITCH" | "ERROR";
+export interface AutopilotEvent {
+  id: number; at: string; step: number; type: AutopilotEventType; symbol: string | null; price: number | null;
+  quantity: number | null; equity: number | null; message: string | null; decisionId: number | null;
+}
+export interface AutopilotPosition {
+  symbol: string; price: number; bear: boolean; units: number; entryPrice: number; value: number; pnlPct: number;
+  stopLoss: number | null; takeProfit: number | null; recentPrices: number[];
+}
+export interface AutopilotView {
+  sessionId: number; status: AutopilotStatus; stopReason: string | null; intervalSeconds: number; maxOrdersPerDay: number;
+  maxLossPct: number; killSwitch: boolean; capital: number; equity: number; returnPct: number; benchmarkReturnPct: number;
+  maxDrawdown: number; step: number; trades: number; winRate: number; ordersToday: number; consecutiveAlerts: number;
+  startedAt: string; nextRunAt: string | null; positions: AutopilotPosition[]; equityCurve: number[]; benchmarkCurve: number[];
+  events: AutopilotEvent[];
+}
+export interface AutopilotStart { intervalSeconds: number; maxOrdersPerDay: number; maxLossPct: number; killSwitch: boolean; capital: number }
+
+export const autopilotApi = {
+  get: (agentId: number) => api.get<AutopilotView | "">(`/agents/${agentId}/autopilot`).then((r) => (r.status === 204 || !r.data ? null : (r.data as AutopilotView))),
+  start: (agentId: number, req: AutopilotStart) => api.post<AutopilotView>(`/agents/${agentId}/autopilot/start`, req).then((r) => r.data),
+  pause: (agentId: number) => api.post<AutopilotView>(`/agents/${agentId}/autopilot/pause`).then((r) => r.data),
+  resume: (agentId: number) => api.post<AutopilotView>(`/agents/${agentId}/autopilot/resume`).then((r) => r.data),
+  stop: (agentId: number) => api.post<AutopilotView>(`/agents/${agentId}/autopilot/stop`).then((r) => r.data),
+  step: (agentId: number) => api.post<AutopilotView>(`/agents/${agentId}/autopilot/step`).then((r) => r.data),
+};
+
+// --- Analyse de capture d'ecran (Claude vision) ---
+export interface ChartAnalysis {
+  isChart: boolean; asset: string; timeframe: string; trend: "HAUSSIERE" | "BAISSIERE" | "LATERALE" | "INDETERMINEE";
+  signal: "ACHAT" | "ATTENDRE" | "VENTE"; confidence: number; supports: string[]; resistances: string[]; patterns: string[];
+  indicators: string[]; reasons: string[]; risks: string[]; stopLoss: string; takeProfit: string; agentView: string; summary: string;
+}
+
 export interface AssistantMessage { role: "user" | "assistant"; content: string }
 export interface AssistantReply {
   reply: string; sources: { title: string; url: string }[]; online: boolean; webSearchUsed: boolean;
@@ -248,6 +285,8 @@ export const assistantApi = {
   status: () => api.get<{ online: boolean; model: string; reason: string | null }>("/agents/assistant/status").then((r) => r.data),
   chat: (messages: AssistantMessage[], webSearch: boolean) =>
     api.post<AssistantReply>("/agents/assistant/chat", { messages, webSearch }).then((r) => r.data),
+  chart: (imageBase64: string, mediaType: string, question: string, agentId?: number) =>
+    api.post<{ analysis: ChartAnalysis; model: string }>("/agents/assistant/chart", { imageBase64, mediaType, question, agentId }).then((r) => r.data),
 };
 
 export interface TournamentCompetitor {
