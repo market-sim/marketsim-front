@@ -4,6 +4,7 @@ import { GraduationCap, Info, Play } from "lucide-react";
 import { agentsApi, type AgentConfig, type PolicyState, type PriceModel, type TrainingResult } from "../../../api/endpoints";
 import { errorMessage } from "../../../api/client";
 import { CardShell, DISPLAY, MONO } from "../../../shared/ui";
+import { usePersistentState } from "../usePersistentState";
 import { inputClass, labelClass, modelLabel, pctPlain, pctSigned } from "../format";
 
 const TREND = ["Baissière", "Neutre", "Haussière"];
@@ -63,14 +64,14 @@ export default function TrainingPanel({ agent, onTrained }: { agent: AgentConfig
   const [episodes, setEpisodes] = useState(2000);
   const [model, setModel] = useState<PriceModel>("REGIME_SWITCHING");
   const [seed, setSeed] = useState<number | null>(null);
-  const [result, setResult] = useState<TrainingResult | null>(null);
+  // dernier entrainement de cet agent, garde meme si on change d'onglet ou rafraichit la page
+  const [result, setResult] = usePersistentState<TrainingResult | null>(`marketsim:training:${agent.id}`, null);
   const [policy, setPolicy] = useState<PolicyState[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   // Changement d'agent : on repart de zero et on charge sa politique deja apprise
   useEffect(() => {
-    setResult(null);
     setError("");
     setSymbol(symbols[0] ?? "AAPL");
     if (agent.trained) agentsApi.policy(agent.id!).then(setPolicy).catch(() => setPolicy([]));

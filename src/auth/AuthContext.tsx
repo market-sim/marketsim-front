@@ -43,6 +43,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     localStorage.removeItem(TOKEN_KEY);
+    try {
+      sessionStorage.clear();
+    } catch {
+      // stockage indisponible
+    }
     setUser(null);
   };
 

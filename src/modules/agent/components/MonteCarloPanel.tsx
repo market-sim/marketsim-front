@@ -9,6 +9,7 @@ import {
 } from "../../../api/endpoints";
 import { errorMessage } from "../../../api/client";
 import { CardShell, DISPLAY, MONO } from "../../../shared/ui";
+import { usePersistentState } from "../usePersistentState";
 import { inputClass, labelClass, modelLabel, pctPlain, pctSigned, strategyShort } from "../format";
 
 const tooltipStyle = { background: "#fff", border: "1px solid #E2E8F0", borderRadius: "8px", fontSize: "11px" };
@@ -44,7 +45,8 @@ export default function MonteCarloPanel({ agent }: { agent: AgentConfig }) {
     symbol: symbols[0] ?? "AAPL", paths: 2000, horizonDays: 252, model: "REGIME_SWITCHING", antithetic: true, seed: null,
     mu: null, sigma: null, crashPct: null, crashDay: null, volMultiplier: null, volDays: null,
   });
-  const [result, setResult] = useState<MonteCarloResult | null>(null);
+  // dernier resultat de cet agent, garde meme si on change d'onglet ou rafraichit la page
+  const [result, setResult] = usePersistentState<MonteCarloResult | null>(`marketsim:mc:${agent.id}`, null);
   const [runs, setRuns] = useState<MonteCarloRun[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -53,7 +55,6 @@ export default function MonteCarloPanel({ agent }: { agent: AgentConfig }) {
   const loadRuns = () => agentsApi.monteCarloRuns(agent.id!).then(setRuns).catch(() => setRuns([]));
 
   useEffect(() => {
-    setResult(null);
     setError("");
     setForm((f) => ({ ...f, symbol: symbols[0] ?? f.symbol }));
     loadRuns();

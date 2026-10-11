@@ -7,6 +7,7 @@ import {
 } from "../../../api/endpoints";
 import { errorMessage } from "../../../api/client";
 import { CardShell, DISPLAY, MONO } from "../../../shared/ui";
+import { usePersistentState } from "../usePersistentState";
 import { inputClass, labelClass, modelLabel, pctPlain, pctSigned, strategyShort } from "../format";
 
 const PALETTE = ["#2563EB", "#7C3AED", "#059669", "#D97706", "#DB2777", "#0891B2"];
@@ -107,7 +108,8 @@ export default function TournamentPanel({ agents, assets }: { agents: AgentConfi
   const eligible = (a: AgentConfig) => a.strategy !== "Q_LEARNING" || !!a.trained;
   const [selected, setSelected] = useState<number[]>(() => agents.filter(eligible).slice(0, MAX_AGENTS).map((a) => a.id!));
   const [form, setForm] = useState({ symbol: "AAPL", paths: 2000, horizonDays: 252, model: "REGIME_SWITCHING" as PriceModel, seed: null as number | null, antithetic: true });
-  const [result, setResult] = useState<TournamentResult | null>(null);
+  // dernier resultat garde meme si on change d'onglet ou rafraichit la page
+  const [result, setResult] = usePersistentState<TournamentResult | null>("marketsim:tournament:last", null);
   const [runs, setRuns] = useState<TournamentRun[]>([]);
   const [metric, setMetric] = useState<"sharpe" | "return">("sharpe");
   const [showMethod, setShowMethod] = useState(false);
@@ -116,6 +118,12 @@ export default function TournamentPanel({ agents, assets }: { agents: AgentConfi
 
   const loadRuns = () => agentsApi.tournaments().then(setRuns).catch(() => setRuns([]));
   useEffect(() => { loadRuns(); }, []);
+
+  // liste d'agents arrivee apres l'ouverture de l'onglet : on preselectionne les agents utilisables
+  useEffect(() => {
+    if (selected.length === 0) setSelected(agents.filter(eligible).slice(0, MAX_AGENTS).map((x) => x.id!));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agents]);
 
   const toggle = (id: number) =>
     setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : cur.length >= MAX_AGENTS ? cur : [...cur, id]));
