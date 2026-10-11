@@ -128,7 +128,7 @@ export default function AssistantPanel() {
   return (
     <CardShell className="overflow-hidden">
       {/* En-tete */}
-      <div className="flex flex-wrap items-center gap-3 px-5 py-4 border-b border-border/60" style={{ background: "linear-gradient(135deg, #EFF6FF, #F5F3FF)" }}>
+      <div className="flex flex-wrap items-center gap-3 px-5 py-4 border-b border-border/60 bg-gradient-to-br from-blue-50 to-violet-50 dark:from-blue-500/10 dark:to-violet-500/10">
         <div className="relative">
           <div className={`w-11 h-11 rounded-full flex items-center justify-center text-white ${speaking ? "animate-pulse" : ""}`} style={{ background: "linear-gradient(135deg, #2563EB, #7C3AED)" }}>
             <Sparkles className="w-5 h-5" />

@@ -4,6 +4,7 @@ import { Bell, ChevronRight, Layers, LogOut, Menu, Search } from "lucide-react";
 import { DISPLAY } from "../shared/ui";
 import { useAuth } from "../auth/AuthContext";
 import MarketTicker from "./MarketTicker";
+import ThemeToggle from "../theme/ThemeToggle";
 import { adminNavItem, navItems, pageTitles } from "./navConfig";
 
 /** Sidebar + header du template ; la page du module s'affiche dans <Outlet />. */
@@ -105,7 +106,7 @@ export default function AppLayout() {
 
       {/* ── Main ── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="flex items-center gap-4 px-6 h-16 bg-white border-b border-border shrink-0">
+        <header className="flex items-center gap-4 px-6 h-16 bg-card border-b border-border shrink-0">
           <button onClick={() => setCollapsed(!collapsed)} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors">
             <Menu className="w-4 h-4" />
           </button>
@@ -114,6 +115,7 @@ export default function AppLayout() {
             <p className="text-[11px] text-muted-foreground">{page.sub}</p>
           </div>
           <div className="ml-auto flex items-center gap-3">
+            <ThemeToggle />
             <div className="hidden md:flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2 w-52 border border-border/50">
               <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
               <input type="text" placeholder="Search assets, news..." className="bg-transparent text-xs text-foreground placeholder:text-muted-foreground border-none outline-none w-full" />

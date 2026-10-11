@@ -34,8 +34,8 @@ function BoxPlots({ result, colors }: { result: TournamentResult; colors: string
     <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
       {ticks.map((t, i) => (
         <g key={i}>
-          <line x1={x(t)} x2={x(t)} y1={6} y2={height - 22} stroke="#F1F5F9" />
-          <text x={x(t)} y={height - 8} textAnchor="middle" fontSize="10" fill="#94A3B8">{(t * 100).toFixed(0)}%</text>
+          <line x1={x(t)} x2={x(t)} y1={6} y2={height - 22} stroke="var(--border)" />
+          <text x={x(t)} y={height - 8} textAnchor="middle" fontSize="10" fill="var(--muted-foreground)">{(t * 100).toFixed(0)}%</text>
         </g>
       ))}
       <line x1={x(0)} x2={x(0)} y1={6} y2={height - 22} stroke="#CBD5E1" strokeDasharray="4 3" />
@@ -44,7 +44,7 @@ function BoxPlots({ result, colors }: { result: TournamentResult; colors: string
         const c = colors[i];
         return (
           <g key={r.name}>
-            <text x={left - 10} y={y + 4} textAnchor="end" fontSize="11" fill="#475569">{r.name}</text>
+            <text x={left - 10} y={y + 4} textAnchor="end" fontSize="11" fill="var(--muted-foreground)">{r.name}</text>
             <line x1={x(r.q05)} x2={x(r.q95)} y1={y} y2={y} stroke={c} strokeWidth={1.5} />
             <line x1={x(r.q05)} x2={x(r.q05)} y1={y - 6} y2={y + 6} stroke={c} strokeWidth={1.5} />
             <line x1={x(r.q95)} x2={x(r.q95)} y1={y - 6} y2={y + 6} stroke={c} strokeWidth={1.5} />

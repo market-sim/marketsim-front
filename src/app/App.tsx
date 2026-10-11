@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { AuthProvider } from "../auth/AuthContext";
+import { ThemeProvider } from "../theme/ThemeContext";
 import ProtectedRoute from "../auth/ProtectedRoute";
 import AppLayout from "../layout/AppLayout";
 import LoginPage from "../modules/auth/LoginPage";
@@ -16,6 +17,7 @@ import BlockchainPage from "../modules/blockchain/BlockchainPage";
 
 export default function App() {
   return (
+    <ThemeProvider>
     <AuthProvider>
       <BrowserRouter>
         <Routes>
@@ -45,5 +47,6 @@ export default function App() {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+    </ThemeProvider>
   );
 }

@@ -25,14 +25,14 @@ export default function ConfidenceGauge({ value, action, label = "Confiance", si
 
   return (
     <svg viewBox="0 0 180 112" width={size} height={(size * 112) / 180} className="block">
-      <path d={arc(0, 1)} stroke="#E2E8F0" strokeWidth={14} fill="none" strokeLinecap="round" />
+      <path d={arc(0, 1)} stroke="var(--muted)" strokeWidth={14} fill="none" strokeLinecap="round" />
       {v > 0.005 && <path d={arc(0, v)} stroke={color} strokeWidth={14} fill="none" strokeLinecap="round" style={{ transition: "all .3s" }} />}
-      <line x1={cx} y1={cy} x2={nx} y2={ny} stroke="#0F172A" strokeWidth={2.5} strokeLinecap="round" style={{ transition: "all .3s" }} />
-      <circle cx={cx} cy={cy} r={5} fill="#0F172A" />
-      <text x={cx} y={cy - 22} textAnchor="middle" fontSize="20" fontWeight="700" fill="#0F172A" fontFamily="JetBrains Mono, monospace">
+      <line x1={cx} y1={cy} x2={nx} y2={ny} stroke="var(--foreground)" strokeWidth={2.5} strokeLinecap="round" style={{ transition: "all .3s" }} />
+      <circle cx={cx} cy={cy} r={5} fill="var(--foreground)" />
+      <text x={cx} y={cy - 22} textAnchor="middle" fontSize="20" fontWeight="700" fill="var(--foreground)" fontFamily="JetBrains Mono, monospace">
         {Math.round(v * 100)}%
       </text>
-      <text x={cx} y={108} textAnchor="middle" fontSize="10" fill="#64748B">{label} · {level}</text>
+      <text x={cx} y={108} textAnchor="middle" fontSize="10" fill="var(--muted-foreground)">{label} · {level}</text>
     </svg>
   );
 }

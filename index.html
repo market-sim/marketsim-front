@@ -7,6 +7,16 @@
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <title>MarketSim AI</title>
       <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
+      <script>
+        // applique le theme avant l'affichage (evite un flash blanc en mode sombre)
+        (function () {
+          try {
+            var t = localStorage.getItem("marketsim-theme") || "system";
+            var dark = t === "dark" || (t === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+            if (dark) document.documentElement.classList.add("dark");
+          } catch (e) {}
+        })();
+      </script>
       
     </head>
 

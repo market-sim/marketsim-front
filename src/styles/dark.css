@@ -1,0 +1,88 @@
+/*
+ * Mode sombre : adapte les couleurs ecrites "en dur" dans les pages (bg-white, text-slate-600,
+ * fonds pastel bg-blue-50...) sans devoir modifier chaque composant.
+ * Les classes basees sur le theme (bg-card, text-foreground, bg-muted...) s'adaptent deja seules.
+ */
+
+/* Surfaces */
+.dark .bg-white { background-color: var(--card); }
+.dark .bg-slate-50 { background-color: rgba(148, 163, 184, 0.07); }
+.dark .bg-slate-100 { background-color: rgba(148, 163, 184, 0.12); }
+.dark .bg-slate-200 { background-color: rgba(148, 163, 184, 0.2); }
+.dark .bg-slate-50\/60 { background-color: rgba(148, 163, 184, 0.05); }
+.dark .bg-slate-50\/40 { background-color: rgba(148, 163, 184, 0.04); }
+
+/* Fonds pastel -> teintes translucides */
+.dark .bg-blue-50 { background-color: rgba(59, 130, 246, 0.14); }
+.dark .bg-blue-100 { background-color: rgba(59, 130, 246, 0.24); }
+.dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.14); }
+.dark .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.24); }
+.dark .bg-red-50 { background-color: rgba(239, 68, 68, 0.14); }
+.dark .bg-red-100 { background-color: rgba(239, 68, 68, 0.24); }
+.dark .bg-amber-50 { background-color: rgba(245, 158, 11, 0.14); }
+.dark .bg-amber-100 { background-color: rgba(245, 158, 11, 0.24); }
+.dark .bg-violet-50 { background-color: rgba(139, 92, 246, 0.14); }
+.dark .bg-red-50\/50 { background-color: rgba(239, 68, 68, 0.08); }
+.dark .bg-blue-50\/60 { background-color: rgba(59, 130, 246, 0.1); }
+.dark .bg-cyan-50 { background-color: rgba(6, 182, 212, 0.14); }
+.dark .bg-rose-50 { background-color: rgba(244, 63, 94, 0.14); }
+.dark .bg-orange-50 { background-color: rgba(249, 115, 22, 0.14); }
+
+@media (hover: hover) {
+  .dark .hover\:bg-blue-50:hover { background-color: rgba(59, 130, 246, 0.14); }
+  .dark .hover\:bg-blue-100:hover { background-color: rgba(59, 130, 246, 0.24); }
+  .dark .hover\:bg-emerald-50:hover,
+  .dark .hover\:bg-emerald-100:hover { background-color: rgba(16, 185, 129, 0.2); }
+  .dark .hover\:bg-red-50:hover { background-color: rgba(239, 68, 68, 0.16); }
+  .dark .hover\:bg-amber-100:hover { background-color: rgba(245, 158, 11, 0.2); }
+  .dark .hover\:bg-slate-200:hover { background-color: rgba(148, 163, 184, 0.2); }
+}
+
+/* Textes */
+.dark .text-slate-400 { color: #8392A9; }
+.dark .text-slate-500 { color: #94A3B8; }
+.dark .text-slate-600 { color: #CBD5E1; }
+.dark .text-slate-700,
+.dark .text-slate-800 { color: #E2E8F0; }
+.dark .text-blue-700 { color: #93C5FD; }
+.dark .text-blue-800 { color: #BFDBFE; }
+.dark .text-emerald-700 { color: #6EE7B7; }
+.dark .text-red-700 { color: #FCA5A5; }
+.dark .text-amber-700,
+.dark .text-amber-800 { color: #FCD34D; }
+.dark .text-violet-700 { color: #C4B5FD; }
+
+/* Bordures */
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300 { border-color: rgba(148, 163, 184, 0.16); }
+.dark .border-blue-100,
+.dark .border-blue-200,
+.dark .border-amber-100,
+.dark .border-red-100,
+.dark .border-red-200 { border-color: rgba(148, 163, 184, 0.2); }
+
+/* Graphiques (Recharts) */
+.dark .recharts-cartesian-grid line { stroke: rgba(148, 163, 184, 0.1); }
+.dark .recharts-default-tooltip {
+  background-color: var(--card) !important;
+  border-color: var(--border) !important;
+  color: var(--foreground);
+}
+.dark .recharts-default-tooltip .recharts-tooltip-label { color: var(--muted-foreground) !important; }
+.dark .recharts-legend-item-text { color: var(--muted-foreground) !important; }
+
+/* Champs de formulaire natifs */
+.dark select option { background-color: var(--card); color: var(--foreground); }
+
+/* Couleurs semantiques (gains / pertes / liens) un peu plus claires sur fond sombre */
+.dark .text-emerald-600 { color: #34D399; }
+.dark .text-red-500,
+.dark .text-red-600 { color: #F87171; }
+.dark .text-blue-600 { color: #60A5FA; }
+.dark .text-amber-600 { color: #FBBF24; }
+.dark .text-orange-600 { color: #FB923C; }
+.dark .text-violet-600 { color: #A78BFA; }
+
+/* Fond blanc semi-transparent sur fond clair (puces non selectionnees) */
+.dark .bg-white\/60 { background-color: rgba(17, 26, 46, 0.6); }
