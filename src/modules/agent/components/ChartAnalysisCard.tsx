@@ -1,6 +1,8 @@
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, Bot, Minus, Target, TrendingDown, TrendingUp } from "lucide-react";
-import type { ChartAnalysis } from "../../../api/endpoints";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, Bot, Minus, ShieldCheck, Target, TrendingDown, TrendingUp } from "lucide-react";
+import type { ChartAnalysis, ChartRisk } from "../../../api/endpoints";
 import { MONO } from "../../../shared/ui";
+import { maxLoss, profileLabel } from "../riskProfile";
+import { eur } from "../schoolLogic";
 
 const SIGNAL = {
   ACHAT: { label: "ACHAT", tone: "bg-emerald-500", Icon: ArrowUpRight },
@@ -28,7 +30,7 @@ function Chips({ title, items, tone }: { title: string; items: string[]; tone: s
 }
 
 /** Fiche d'analyse technique d'une capture d'ecran (sortie structuree de Claude vision). */
-export default function ChartAnalysisCard({ a }: { a: ChartAnalysis }) {
+export default function ChartAnalysisCard({ a, risk }: { a: ChartAnalysis; risk?: ChartRisk }) {
   if (!a.isChart) {
     return <p className="text-[13px]">{a.summary || "Cette image ne ressemble pas à un graphique de marché."}</p>;
   }
@@ -76,6 +78,18 @@ export default function ChartAnalysisCard({ a }: { a: ChartAnalysis }) {
         <div className="rounded-lg bg-amber-50 border border-amber-100 p-2.5">
           <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide mb-1 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />Risques</p>
           <ul className="text-[11px] text-amber-800 space-y-0.5">{a.risks.map((r) => <li key={r}>• {r}</li>)}</ul>
+        </div>
+      )}
+
+      {risk && (
+        <div className="rounded-lg bg-violet-50 border border-violet-100 p-2.5">
+          <p className="text-[10px] font-semibold text-violet-700 uppercase tracking-wide mb-1 flex items-center gap-1">
+            <ShieldCheck className="w-3 h-3" />Votre profil : {profileLabel(risk.riskProfile)}
+          </p>
+          <p className="text-[12px] text-violet-900">
+            Risque maximum sur ce trade : <b style={MONO}>{eur(maxLoss(risk))}</b> ({String(risk.riskPercent).replace(".", ",")} % de {eur(risk.accountBalance)} virtuels).
+          </p>
+          {a.riskAdvice && <p className="text-[12px] text-violet-800 mt-1">{a.riskAdvice}</p>}
         </div>
       )}
 

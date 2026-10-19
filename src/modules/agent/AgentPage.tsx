@@ -1,19 +1,23 @@
 import { useEffect, useState } from "react";
-import { Bot, Brain, Dices, Gamepad2, GraduationCap, Pencil, Plus, Power, Sparkles, Trash2, Trophy, Wand2 } from "lucide-react";
+import { Bot, Brain, Database, Dices, Gamepad2, GraduationCap, Link2, Pencil, Plus, Power, Sparkles, Trash2, Trophy, Wand2 } from "lucide-react";
 import { agentsApi, assetsApi, type AgentConfig, type AnomalyReport, type Asset } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
 import { CardShell, DISPLAY } from "../../shared/ui";
+import { useCoachFocus } from "../coach/coachFocus";
+import NewsScreen from "../news/NewsScreen";
 import AgentFormModal from "./components/AgentFormModal";
 import AssistantPanel from "./components/AssistantPanel";
+import AuditPanel from "./components/AuditPanel";
 import AutopilotPanel from "./components/AutopilotPanel";
 import DecisionsPanel from "./components/DecisionsPanel";
 import MonteCarloPanel from "./components/MonteCarloPanel";
 import ReplayPanel from "./components/ReplayPanel";
 import TournamentPanel from "./components/TournamentPanel";
 import TrainingPanel from "./components/TrainingPanel";
+import WalkForwardPanel from "./components/WalkForwardPanel";
 import { personalities, personalityOf, strategyLabel, strategyShort } from "./format";
 
-type Tab = "assistant" | "autopilot" | "decisions" | "montecarlo" | "training" | "tournament" | "replay";
+type Tab = "assistant" | "autopilot" | "decisions" | "montecarlo" | "training" | "realdata" | "tournament" | "replay" | "audit";
 
 const TABS: { id: Tab; label: string; Icon: typeof Brain }[] = [
   { id: "assistant", label: "Assistant IA", Icon: Sparkles },
@@ -21,8 +25,10 @@ const TABS: { id: Tab; label: string; Icon: typeof Brain }[] = [
   { id: "decisions", label: "Décisions & XAI", Icon: Brain },
   { id: "montecarlo", label: "Monte Carlo", Icon: Dices },
   { id: "training", label: "Entraînement RL", Icon: GraduationCap },
+  { id: "realdata", label: "Données réelles", Icon: Database },
   { id: "tournament", label: "Tournoi", Icon: Trophy },
   { id: "replay", label: "Replay vs Agent", Icon: Gamepad2 },
+  { id: "audit", label: "Audit blockchain", Icon: Link2 },
 ];
 
 /** Module 6 : Agent de Trading Intelligent. */
@@ -36,6 +42,7 @@ export default function AgentPage() {
   const [error, setError] = useState("");
   const [reports, setReports] = useState<AnomalyReport[]>([]);
   const [demoBusy, setDemoBusy] = useState(false);
+  const [auditFocus, setAuditFocus] = useState<number | null>(null);
   const loadReports = () => agentsApi.allAnomalies().then(setReports).catch(() => setReports([]));
 
   const load = async (selectId?: number) => {
@@ -57,6 +64,9 @@ export default function AgentPage() {
   }, []);
 
   const agent = agents.find((a) => a.id === selectedId) ?? null;
+
+  // le coach (present sur tous les ecrans) analyse l'actif principal de l'agent selectionne, avec son appetit pour le risque
+  useCoachFocus(agent?.allowedAssets.split(",")[0]?.trim() || undefined, agent?.id);
 
   const save = async (data: AgentConfig) => {
     const saved = modal === "edit" && agent ? await agentsApi.update(agent.id!, data) : await agentsApi.create(data);
@@ -161,7 +171,8 @@ export default function AgentPage() {
 
       {agent && (
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 items-start">
-          {/* Fiche de l'agent */}
+          {/* Colonne de gauche : fiche de l'agent + ecran d'actualites parlant (reste visible pendant qu'on defile) */}
+          <div className="space-y-4 min-w-0 xl:self-stretch">
           <CardShell className="p-5">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
@@ -214,9 +225,11 @@ export default function AgentPage() {
               </button>
             </div>
           </CardShell>
+          <div className="hidden xl:block xl:sticky xl:top-2"><NewsScreen /></div>
+          </div>
 
           {/* Laboratoire IA */}
-          <div className="xl:col-span-3 space-y-4">
+          <div className="xl:col-span-3 space-y-4 min-w-0">
             <div className="flex flex-wrap gap-1 bg-white rounded-xl border border-border/60 p-1 w-fit">
               {TABS.map(({ id, label, Icon }) => (
                 <button key={id} onClick={() => setTab(id)}
@@ -230,8 +243,10 @@ export default function AgentPage() {
             {tab === "decisions" && <DecisionsPanel agent={agent} onChange={loadReports} />}
             {tab === "montecarlo" && <MonteCarloPanel agent={agent} />}
             {tab === "training" && <TrainingPanel agent={agent} onTrained={() => load()} />}
+            {tab === "realdata" && <WalkForwardPanel agent={agent} onOpenAudit={(id) => { setAuditFocus(id); setTab("audit"); }} />}
             {tab === "tournament" && <TournamentPanel agents={agents} assets={assets} />}
             {tab === "replay" && <ReplayPanel agent={agent} />}
+            {tab === "audit" && <AuditPanel agent={agent} focusRecordId={auditFocus} onFocusConsumed={() => setAuditFocus(null)} />}
           </div>
         </div>
       )}

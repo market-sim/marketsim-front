@@ -24,37 +24,54 @@ function frenchVoice(): SpeechSynthesisVoice | undefined {
   );
 }
 
+/** Lecture en cours (une seule voix a la fois : coach, Atlas et ecran d'actualites se relaient sans se couper la parole). */
+let stopActive: (() => void) | null = null;
+
 /**
  * Lit un texte a voix haute, phrase par phrase (Chrome coupe les longues lectures).
- * @returns une fonction pour arreter la lecture
+ * Si une autre lecture est en cours, elle est arretee et son {@code onEnd(true)} est appele.
+ *
+ * @param onEnd appele a la fin : {@code cancelled} vaut true si la lecture a ete interrompue, false si elle est allee au bout
+ * @returns une fonction pour arreter la lecture (sans effet si elle est deja terminee)
  */
-export function speak(text: string, onStart?: () => void, onEnd?: () => void): () => void {
+export function speak(text: string, onStart?: () => void, onEnd?: (cancelled: boolean) => void, onBoundary?: () => void): () => void {
   if (!ttsSupported()) {
-    onEnd?.();
+    onEnd?.(false);
     return () => {};
   }
+  stopActive?.();
   const synth = window.speechSynthesis;
   synth.cancel();
   const sentences = toSpeakable(text).match(/[^.!?…]+[.!?…]*/g) ?? [];
   const voice = frenchVoice();
-  let cancelled = false;
+
+  let finished = false;
+  const finish = (cancelled: boolean) => {
+    if (finished) return;
+    finished = true;
+    if (stopActive === stop) stopActive = null;
+    onEnd?.(cancelled);
+  };
+  const stop = () => {
+    if (finished) return;
+    synth.cancel();
+    finish(true);
+  };
+  stopActive = stop;
 
   sentences.forEach((sentence, i) => {
     const u = new SpeechSynthesisUtterance(sentence.trim());
     u.lang = "fr-FR";
     if (voice) u.voice = voice;
     u.rate = 1.05;
+    u.onboundary = () => onBoundary?.();   // un mot prononce (pas emis par toutes les voix)
     if (i === 0) u.onstart = () => onStart?.();
-    if (i === sentences.length - 1) u.onend = () => { if (!cancelled) onEnd?.(); };
+    if (i === sentences.length - 1) u.onend = () => finish(false);
     synth.speak(u);
   });
-  if (sentences.length === 0) onEnd?.();
+  if (sentences.length === 0) finish(false);
 
-  return () => {
-    cancelled = true;
-    synth.cancel();
-    onEnd?.();
-  };
+  return stop;
 }
 
 // ----- Reconnaissance vocale (Chrome / Edge) -----

@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ExternalLink, Globe, ImagePlus, Mic, MicOff, Send, Sparkles, Square, Volume2, VolumeX, X } from "lucide-react";
-import { assistantApi, type AssistantMessage, type AssistantReply, type ChartAnalysis } from "../../../api/endpoints";
+import { assistantApi, type AssistantMessage, type AssistantReply, type ChartAnalysis, type ChartRisk } from "../../../api/endpoints";
 import { errorMessage } from "../../../api/client";
 import { CardShell, DISPLAY } from "../../../shared/ui";
 import { createRecognition, speak, sttSupported, ttsSupported } from "../speech";
+import { DEFAULT_RISK, toRequest } from "../riskProfile";
+import { usePersistentState } from "../usePersistentState";
 import ChartAnalysisCard from "./ChartAnalysisCard";
+import RiskProfilePicker from "./RiskProfilePicker";
 
 interface Turn extends AssistantMessage {
   meta?: Pick<AssistantReply, "sources" | "online" | "webSearchUsed" | "notice">;
@@ -12,6 +15,8 @@ interface Turn extends AssistantMessage {
   image?: string;
   /** fiche d'analyse renvoyee pour une capture */
   chart?: ChartAnalysis;
+  /** profil de risque utilise pour cette analyse */
+  risk?: ChartRisk;
 }
 
 interface PendingImage { dataUrl: string; base64: string; mediaType: string }
@@ -81,6 +86,7 @@ function RichText({ text }: { text: string }) {
 export default function AssistantPanel({ agentId, agentName }: { agentId?: number; agentName?: string }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [image, setImage] = useState<PendingImage | null>(null);
+  const [risk, setRisk] = usePersistentState<ChartRisk>("marketsim:assistant:risk", DEFAULT_RISK);
   const [dragOver, setDragOver] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState("");
@@ -133,11 +139,12 @@ export default function AssistantPanel({ agentId, agentName }: { agentId?: numbe
     setBusy(true);
     setError("");
     try {
-      const r = await assistantApi.chart(img.base64, img.mediaType, question, agentId);
+      const used = toRequest(risk);
+      const r = await assistantApi.chart(img.base64, img.mediaType, question, agentId, used);
       const summary = r.analysis.isChart
         ? `Signal ${r.analysis.signal.toLowerCase()}, confiance ${r.analysis.confidence} %. ${r.analysis.summary}`
         : r.analysis.summary;
-      setTurns([...history, { role: "assistant", content: summary, chart: r.analysis,
+      setTurns([...history, { role: "assistant", content: summary, chart: r.analysis, risk: used,
         meta: { sources: [], online: true, webSearchUsed: false, notice: null } }]);
       if (voiceOn) say(summary);
     } catch (e) {
@@ -290,7 +297,7 @@ export default function AssistantPanel({ agentId, agentName }: { agentId?: numbe
             <div className={`max-w-[80%] text-[13px] leading-relaxed rounded-2xl px-4 py-2.5 ${t.role === "user" ? "bg-blue-600 text-white rounded-br-sm" : "bg-white border border-border/60 text-slate-700 rounded-tl-sm"}`}>
               {t.image && <img src={t.image} alt="Capture envoyée" className="rounded-lg mb-2 max-h-56 w-auto border border-white/30" />}
               {t.role === "user" ? <p className="whitespace-pre-wrap">{t.content}</p>
-                : t.chart ? <ChartAnalysisCard a={t.chart} /> : <RichText text={t.content} />}
+                : t.chart ? <ChartAnalysisCard a={t.chart} risk={t.risk} /> : <RichText text={t.content} />}
               {t.meta && (
                 <div className="mt-2 pt-2 border-t border-slate-100 space-y-1.5">
                   {t.meta.sources.length > 0 && (
@@ -348,14 +355,17 @@ export default function AssistantPanel({ agentId, agentName }: { agentId?: numbe
           ))}
         </div>
         {image && (
-          <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-2">
-            <img src={image.dataUrl} alt="Capture à analyser" className="h-14 w-auto rounded-md border border-border" />
-            <div className="flex-1 text-[11px] text-blue-800">
-              Capture prête{agentName ? ` · analysée du point de vue de « ${agentName} »` : ""}. Ajoutez une question ou envoyez directement.
-              {status && !status.online && <span className="block text-amber-700">L'analyse d'image demande la clé ANTHROPIC_API_KEY (mode local actuellement).</span>}
+          <>
+            <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-2">
+              <img src={image.dataUrl} alt="Capture à analyser" className="h-14 w-auto rounded-md border border-border" />
+              <div className="flex-1 text-[11px] text-blue-800">
+                Capture prête{agentName ? ` · analysée du point de vue de « ${agentName} »` : ""}. Choisissez votre profil, ajoutez une question ou envoyez directement.
+                {status && !status.online && <span className="block text-amber-700">L'analyse d'image demande la clé ANTHROPIC_API_KEY (mode local actuellement).</span>}
+              </div>
+              <button type="button" onClick={() => setImage(null)} title="Retirer" className="p-1 text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
             </div>
-            <button type="button" onClick={() => setImage(null)} title="Retirer" className="p-1 text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
-          </div>
+            <RiskProfilePicker value={risk} onChange={setRisk} disabled={busy} />
+          </>
         )}
         <form onSubmit={submit} className="flex items-center gap-2">
           <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden"

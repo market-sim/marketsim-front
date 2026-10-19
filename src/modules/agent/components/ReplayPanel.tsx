@@ -1,51 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  CartesianGrid, ComposedChart, Legend, Line, ReferenceLine, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis,
+  CartesianGrid, ComposedChart, Legend, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Bot, Flag, Gamepad2, Pause, Play, RotateCcw, User } from "lucide-react";
+import { Bot, Flag, Gamepad2, GraduationCap, Pause, Play, RotateCcw, User } from "lucide-react";
 import { agentsApi, type AgentConfig, type PriceModel, type ReplayResult } from "../../../api/endpoints";
 import { errorMessage } from "../../../api/client";
 import { CardShell, DISPLAY, MONO } from "../../../shared/ui";
 import { actionStyle, inputClass, labelClass, modelLabel, pctPlain, pctSigned } from "../format";
+import { maxDrawdown, simulateHuman } from "../replayUtils";
+import BeginnerSchool from "./BeginnerSchool";
+import CandleChart, { type HumanTrade } from "./CandleChart";
 import ConfidenceGauge from "./ConfidenceGauge";
 
-const SPEEDS = [5, 10, 20, 40];
+/** Jours simules par seconde : on demarre lentement (1 j/s) pour avoir le temps de comprendre chaque bougie. */
+const SPEEDS = [0.5, 1, 2, 5, 10, 20, 40];
+const DEFAULT_SPEED = 1;
+/** Nombre de bougies visibles : plus il est petit, plus on voit chaque jour en detail. */
+const ZOOMS = [20, 40, 80];
 const EVENT_LABEL: Record<number, string> = { 1: "achète", 2: "vend", 3: "stop-loss", 4: "take-profit" };
-
-interface HumanTrade { day: number; side: "BUY" | "SELL"; price: number }
-
-/** Simule le portefeuille du joueur : achat = tout le capital, vente = tout, frais identiques a l'agent. */
-function simulateHuman(replay: ReplayResult, trades: HumanTrade[], upTo: number) {
-  let cash = replay.capital;
-  let units = 0;
-  let k = 0;
-  const equity: number[] = [];
-  for (let d = 0; d <= upTo; d++) {
-    const price = replay.days[d].price;
-    while (k < trades.length && trades[k].day === d) {
-      const t = trades[k++];
-      if (t.side === "BUY" && units === 0) {
-        units = (cash * (1 - replay.costRate)) / price;
-        cash = 0;
-      } else if (t.side === "SELL" && units > 0) {
-        cash = units * price * (1 - replay.costRate);
-        units = 0;
-      }
-    }
-    equity.push(cash + units * price);
-  }
-  return { equity, invested: units > 0 };
-}
-
-function maxDrawdown(values: number[]) {
-  let peak = values[0] ?? 1;
-  let worst = 0;
-  for (const v of values) {
-    peak = Math.max(peak, v);
-    worst = Math.min(worst, v / peak - 1);
-  }
-  return worst;
-}
 
 export default function ReplayPanel({ agent }: { agent: AgentConfig }) {
   const symbols = agent.allowedAssets.split(",").map((s) => s.trim()).filter(Boolean);
@@ -53,7 +25,9 @@ export default function ReplayPanel({ agent }: { agent: AgentConfig }) {
   const [replay, setReplay] = useState<ReplayResult | null>(null);
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [speed, setSpeed] = useState(10);
+  const [speed, setSpeed] = useState(DEFAULT_SPEED);
+  const [zoom, setZoom] = useState(40);
+  const [learn, setLearn] = useState(false);
   const [trades, setTrades] = useState<HumanTrade[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -138,27 +112,28 @@ export default function ReplayPanel({ agent }: { agent: AgentConfig }) {
     return rows;
   }, [replay, human, t]);
 
-  // marqueurs de transactions (series separees : seuls les vrais points sont dessines)
-  const markers = useMemo(() => {
-    if (!replay) return { agentBuy: [], agentSell: [], humanBuy: [], humanSell: [] };
-    const upTo = replay.days.slice(0, t + 1);
-    return {
-      agentBuy: upTo.filter((d) => d.event === 1).map((d) => ({ day: d.day, price: d.price })),
-      agentSell: upTo.filter((d) => d.event >= 2).map((d) => ({ day: d.day, price: d.price })),
-      humanBuy: trades.filter((x) => x.side === "BUY" && x.day <= t).map((x) => ({ day: x.day, price: x.price })),
-      humanSell: trades.filter((x) => x.side === "SELL" && x.day <= t).map((x) => ({ day: x.day, price: x.price })),
-    };
-  }, [replay, trades, t]);
+  if (learn) return <BeginnerSchool agent={agent} onExit={() => setLearn(false)} />;
 
   if (!replay) {
     return (
       <CardShell className="p-6">
+        <button onClick={() => setLearn(true)}
+          className="w-full mb-5 flex items-center gap-3 rounded-xl border border-blue-500/40 bg-blue-500/10 hover:bg-blue-500/15 px-4 py-3 text-left transition-colors">
+          <span className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center shrink-0"><GraduationCap className="w-5 h-5 text-white" /></span>
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-foreground" style={DISPLAY}>🎓 Mode débutant : 1 000 € virtuels avec le coach IA</span>
+            <span className="block text-[11.5px] text-muted-foreground">
+              Tu pars de zéro : le coach te conseille d'acheter, de garder ou de vendre et t'explique pourquoi ; à la fin, ton bilan te montre ce que tu as bien ou mal fait.
+            </span>
+          </span>
+          <span className="ml-auto text-[12px] font-semibold text-blue-500 shrink-0">Commencer →</span>
+        </button>
         <div className="flex items-center gap-2 mb-1">
           <Gamepad2 className="w-5 h-5 text-blue-600" />
           <h3 className="text-base font-semibold text-foreground" style={DISPLAY}>Replay : vous contre l'agent</h3>
         </div>
         <p className="text-[12px] text-muted-foreground mb-5 max-w-2xl">
-          Un marché simulé défile en accéléré. Vous tradez à la main (bouton ou touche <b>B</b> pour acheter, <b>S</b> pour vendre,
+          Un marché simulé défile doucement (1 jour par seconde, réglable). Vous tradez à la main (bouton ou touche <b>B</b> pour acheter, <b>S</b> pour vendre,
           <b> espace</b> pour pause) pendant que l'agent trade tout seul sur les mêmes prix. À la fin : qui a battu le buy &amp; hold ?
         </p>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
@@ -219,7 +194,7 @@ export default function ReplayPanel({ agent }: { agent: AgentConfig }) {
           <div className="flex gap-1 bg-muted/40 rounded-lg p-0.5">
             {SPEEDS.map((s) => (
               <button key={s} onClick={() => setSpeed(s)} className={`px-2.5 py-1 rounded-md text-[11px] font-medium ${speed === s ? "bg-white shadow-sm text-foreground" : "text-muted-foreground"}`}>
-                {s} j/s
+                {String(s).replace(".", ",")} j/s
               </button>
             ))}
           </div>
@@ -243,23 +218,27 @@ export default function ReplayPanel({ agent }: { agent: AgentConfig }) {
       <div className="grid grid-cols-1 2xl:grid-cols-4 gap-4">
         {/* Graphiques */}
         <CardShell className="2xl:col-span-3 p-5">
-          <h3 className="text-sm font-semibold text-foreground mb-2" style={DISPLAY}>Prix &amp; transactions</h3>
-          <ResponsiveContainer width="100%" height={230}>
-            <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-              <XAxis dataKey="day" type="number" domain={[-replay.context.length, replay.horizonDays]} tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-              <YAxis domain={["auto", "auto"]} tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: "8px", fontSize: "11px" }} labelFormatter={(d) => `Jour ${d}`} />
-              <ReferenceLine x={0} stroke="#CBD5E1" label={{ value: "Début", position: "insideTopLeft", fontSize: 10, fill: "#94A3B8" }} />
-              {crashVisible && <ReferenceLine x={replay.crashDay!} stroke="#DC2626" strokeDasharray="4 3" label={{ value: "Krach !", position: "insideTopRight", fontSize: 10, fill: "#DC2626" }} />}
-              <Line dataKey="price" name="Prix" stroke="#0F172A" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-              <Scatter data={markers.agentBuy} dataKey="price" name="Agent achète" fill="#2563EB" shape="triangle" isAnimationActive={false} />
-              <Scatter data={markers.agentSell} dataKey="price" name="Agent vend" fill="#93C5FD" shape="diamond" isAnimationActive={false} />
-              <Scatter data={markers.humanBuy} dataKey="price" name="Vous achetez" fill="#059669" shape="triangle" isAnimationActive={false} />
-              <Scatter data={markers.humanSell} dataKey="price" name="Vous vendez" fill="#DC2626" shape="diamond" isAnimationActive={false} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-            </ComposedChart>
-          </ResponsiveContainer>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>Prix &amp; transactions</h3>
+            <span className="text-[10px] text-muted-foreground">bougies journalières · mèches simulées</span>
+            <div className="ml-auto flex items-center gap-1.5">
+              <span className="text-[10px] text-muted-foreground">Zoom</span>
+              <div className="flex gap-1 bg-muted/40 rounded-lg p-0.5">
+                {ZOOMS.map((z) => (
+                  <button key={z} onClick={() => setZoom(z)} className={`px-2 py-0.5 rounded-md text-[11px] font-medium ${zoom === z ? "bg-white shadow-sm text-foreground" : "text-muted-foreground"}`}>{z}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <CandleChart replay={replay} t={t} trades={trades} agentName={agent.name} playing={playing} speed={speed} visible={zoom} height={380} />
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[10.5px] text-muted-foreground">
+            <span><b style={{ color: "#38BDF8" }}>▲</b> l'IA achète</span>
+            <span><b style={{ color: "#A78BFA" }}>▼</b> l'IA vend</span>
+            <span><b style={{ color: "#F87171" }}>▼</b> stop-loss · <b style={{ color: "#4ADE80" }}>▼</b> take-profit</span>
+            <span><b style={{ color: "#FBBF24" }}>●</b> vos ordres</span>
+            <span>lignes <b style={{ color: "#38BDF8" }}>ENTRÉE</b> / <b style={{ color: "#F87171" }}>SL</b> / <b style={{ color: "#4ADE80" }}>TP</b> tant que l'IA est investie</span>
+            <span>ligne « SIGNAL IA » : ce que l'IA pense chaque jour (▲ achat, ▼ vente, · attente)</span>
+          </div>
 
           <h3 className="text-sm font-semibold text-foreground mt-4 mb-2" style={DISPLAY}>Portefeuilles (base 100)</h3>
           <ResponsiveContainer width="100%" height={200}>

@@ -217,15 +217,22 @@ export interface TrainingResult {
   };
 }
 
+/** Bougie journaliere : ouverture = cloture de la veille ; haut / bas simules par pont brownien. */
+export interface Candle { open: number; high: number; low: number; close: number }
+
 export interface ReplayDay {
-  day: number; price: number; action: AgentAction; confidence: number;
+  day: number; price: number; open: number; high: number; low: number; action: AgentAction; confidence: number;
   /** 0 rien · 1 achat · 2 vente · 3 stop-loss · 4 take-profit */
   event: number; agentPosition: number; agentEquity: number; benchmarkEquity: number;
+  /** conseil du coach pour ce jour et ses raisons (phrase pedagogique) */
+  why: string;
 }
 
 export interface ReplayResult {
   symbol: string; model: PriceModel; seed: number; horizonDays: number; capital: number;
-  positionFraction: number; costRate: number; crashDay: number | null; context: number[];
+  positionFraction: number; costRate: number;
+  /** distance du stop-loss de l'agent (fraction du prix d'entree) ; le take-profit est a 2 fois cette distance */
+  stopPct: number; crashDay: number | null; context: number[]; contextCandles: Candle[];
   days: ReplayDay[]; agentReturn: number; benchmarkReturn: number; agentMaxDrawdown: number; agentTrades: number;
 }
 
@@ -273,7 +280,13 @@ export interface ChartAnalysis {
   isChart: boolean; asset: string; timeframe: string; trend: "HAUSSIERE" | "BAISSIERE" | "LATERALE" | "INDETERMINEE";
   signal: "ACHAT" | "ATTENDRE" | "VENTE"; confidence: number; supports: string[]; resistances: string[]; patterns: string[];
   indicators: string[]; reasons: string[]; risks: string[]; stopLoss: string; takeProfit: string; agentView: string; summary: string;
+  /** comment le profil de risque choisi change le conseil (vide si aucun profil) */
+  riskAdvice?: string;
 }
+
+/** Style de trading choisi avant l'analyse : fixe la prudence du conseil et la part du capital risquee par trade. */
+export type RiskProfile = "CONSERVATIVE" | "BALANCED" | "AGGRESSIVE";
+export interface ChartRisk { riskProfile: RiskProfile; riskPercent: number; accountBalance: number }
 
 export interface AssistantMessage { role: "user" | "assistant"; content: string }
 export interface AssistantReply {
@@ -285,8 +298,8 @@ export const assistantApi = {
   status: () => api.get<{ online: boolean; model: string; reason: string | null }>("/agents/assistant/status").then((r) => r.data),
   chat: (messages: AssistantMessage[], webSearch: boolean) =>
     api.post<AssistantReply>("/agents/assistant/chat", { messages, webSearch }).then((r) => r.data),
-  chart: (imageBase64: string, mediaType: string, question: string, agentId?: number) =>
-    api.post<{ analysis: ChartAnalysis; model: string }>("/agents/assistant/chart", { imageBase64, mediaType, question, agentId }).then((r) => r.data),
+  chart: (imageBase64: string, mediaType: string, question: string, agentId?: number, risk?: ChartRisk) =>
+    api.post<{ analysis: ChartAnalysis; model: string }>("/agents/assistant/chart", { imageBase64, mediaType, question, agentId, ...risk }).then((r) => r.data),
 };
 
 export interface TournamentCompetitor {
@@ -349,11 +362,133 @@ export const agentsApi = {
     api.post<TrainingResult>(`/agents/${id}/train`, req).then((r) => r.data),
   policy: (id: number) => api.get<PolicyState[]>(`/agents/${id}/policy`).then((r) => r.data),
   // Demo : replay humain vs agent
-  replay: (id: number, req: { symbol: string; days: number; model: PriceModel; seed?: number | null; crashPct?: number | null }) =>
+  replay: (id: number, req: { symbol: string; days: number; model: PriceModel; seed?: number | null; crashPct?: number | null; capital?: number | null }) =>
     api.post<ReplayResult>(`/agents/${id}/replay`, req).then((r) => r.data),
   // IA : tournoi entre agents + tests statistiques
   tournament: (req: TournamentRequest) => api.post<TournamentResult>("/agents/tournaments", req).then((r) => r.data),
   tournaments: () => api.get<TournamentRun[]>("/agents/tournaments").then((r) => r.data),
+};
+
+// --- Donnees de marche reelles + backtest walk-forward ---
+export interface PricePoint { date: string; close: number }
+export interface SeriesInfo {
+  symbol: string; source: "YAHOO" | "CSV"; points: number; from: string; to: string;
+  firstClose: number; lastClose: number; dataHash: string; prices: PricePoint[];
+}
+export interface WalkForwardRequest { symbol: string; trainDays: number; testDays: number; episodes: number; seed?: number | null }
+export interface WalkForwardWindow {
+  index: number; trainFrom: string; trainTo: string; testFrom: string; testTo: string;
+  agentReturn: number; benchmarkReturn: number; excess: number; inSampleReturn: number; inSampleBenchmark: number;
+  maxDrawdown: number; trades: number; exposure: number;
+}
+export interface WalkForwardPerformance { totalReturn: number; annualizedReturn: number; sharpe: number; maxDrawdown: number }
+export interface WalkForwardTest {
+  windows: number; meanExcess: number; ciLow: number; ciHigh: number; tStat: number; pValue: number;
+  pBootstrap: number; pSign: number; winRate: number; cohenD: number;
+}
+export interface WalkForwardResult {
+  symbol: string; source: "YAHOO" | "CSV"; dataHash: string; dataFrom: string; dataTo: string; bars: number;
+  strategy: AgentStrategy; riskLevel: number; trainDays: number; testDays: number; episodes: number; seed: number; elapsedMs: number;
+  windows: WalkForwardWindow[]; agent: WalkForwardPerformance; benchmark: WalkForwardPerformance;
+  test: WalkForwardTest | null; overfitGap: number; curve: { date: string; agent: number; benchmark: number }[];
+  prices: PricePoint[]; verdict: string; auditRecordId: number | null;
+}
+
+export const marketDataApi = {
+  series: (symbol: string) => api.get<SeriesInfo>("/market-data/series", { params: { symbol } }).then((r) => r.data),
+  refresh: (symbol: string) => api.post<SeriesInfo>("/market-data/refresh", null, { params: { symbol } }).then((r) => r.data),
+  importCsv: (symbol: string, csv: string) => api.post<SeriesInfo>("/market-data/import", { symbol, csv }).then((r) => r.data),
+};
+
+export const walkForwardApi = {
+  run: (agentId: number, req: WalkForwardRequest) =>
+    api.post<WalkForwardResult>(`/agents/${agentId}/walkforward`, req).then((r) => r.data),
+};
+
+// --- Registre d'audit des decisions de l'IA (hash chaines + arbre de Merkle) ---
+export type LedgerType = "DECISION" | "MONTE_CARLO" | "TOURNAMENT" | "TRAINING" | "WALK_FORWARD" | "AUTOPILOT_HALT" | "COACH_ADVICE";
+export interface LedgerRecord {
+  id: number; type: LedgerType; refId: number | null; agentId: number | null; title: string | null; createdAtMs: number;
+  leafHash: string; blockHeight: number | null; leafIndex: number | null; sealed: boolean; intact: boolean;
+}
+export interface LedgerRecordDetail { record: LedgerRecord; payload: string; leafInput: string }
+export interface LedgerBlock {
+  height: number; previousHash: string; merkleRoot: string; recordCount: number; sealedAtMs: number;
+  blockHash: string; seal: string; anchorRef: string | null;
+}
+export interface MerkleStep { hash: string; left: boolean }
+export interface LedgerProof {
+  recordId: number; type: LedgerType; sealed: boolean; intact: boolean; leafInput: string; leafHash: string;
+  leafIndex: number | null; leafCount: number | null; path: MerkleStep[]; merkleRoot: string | null;
+  blockHeight: number | null; blockHash: string | null; previousHash: string | null; blockInput: string | null;
+  sealedAtMs: number | null; proofValid: boolean;
+}
+export interface LedgerSummary {
+  blocks: number; headHeight: number; headHash: string; lastSealedAtMs: number | null; totalRecords: number;
+  myRecords: number; pendingRecords: number; byType: Record<string, number>; sealInterval: string;
+}
+export interface LedgerIssue { type: string; blockHeight: number | null; recordId: number | null; message: string }
+export interface LedgerChainReport {
+  valid: boolean; blocks: number; sealedRecords: number; pendingRecords: number; headHash: string;
+  issues: LedgerIssue[]; checkedAtMs: number;
+}
+
+export const ledgerApi = {
+  summary: () => api.get<LedgerSummary>("/ledger/summary").then((r) => r.data),
+  records: (params: { type?: string; agentId?: number; limit?: number } = {}) =>
+    api.get<LedgerRecord[]>("/ledger/records", { params }).then((r) => r.data),
+  record: (id: number) => api.get<LedgerRecordDetail>(`/ledger/records/${id}`).then((r) => r.data),
+  proof: (id: number) => api.get<LedgerProof>(`/ledger/records/${id}/proof`).then((r) => r.data),
+  blocks: (limit = 12) => api.get<LedgerBlock[]>("/ledger/blocks", { params: { limit } }).then((r) => r.data),
+  verify: () => api.get<LedgerChainReport>("/ledger/verify").then((r) => r.data),
+  seal: () => api.post<LedgerBlock | { message: string }>("/ledger/seal").then((r) => r.data),
+  tamper: (id: number) => api.post<{ recordId: number; tampered: boolean; change: string }>(`/ledger/demo/tamper/${id}`).then((r) => r.data),
+  restore: (id: number) => api.post<{ recordId: number; tampered: boolean; change: string }>(`/ledger/demo/restore/${id}`).then((r) => r.data),
+};
+
+// --- Coach de trading (present sur tous les ecrans) ---
+export interface CoachIndicators {
+  rsi14: number; sma20: number; sma50: number; sma200: number; volatilityAnnual: number; volatilityNormal: number;
+  momentum20: number; trend: "HAUSSIERE" | "BAISSIERE" | "MIXTE";
+}
+export interface CoachLevels { support: number; resistance: number | null; stop: number; target: number }
+export interface CoachReason { label: string; contribution: number; text: string }
+export interface CoachRule { action: AgentAction; title: string; condition: string; level: number | null; active: boolean }
+export interface CoachTrackRecord {
+  windows: number; from: string; to: string; strategyReturn: number; benchmarkReturn: number; strategySharpe: number;
+  benchmarkSharpe: number; strategyMaxDrawdown: number; benchmarkMaxDrawdown: number; meanExcess: number; pValue: number; text: string;
+}
+export interface CoachChartPoint { date: string; close: number; sma20: number; sma50: number }
+export interface CoachAnalysis {
+  symbol: string; name: string; source: string; asOf: string; price: number; change1d: number; change5d: number; change20d: number;
+  action: AgentAction; confidence: number; score: number; indicators: CoachIndicators; levels: CoachLevels;
+  reasons: CoachReason[]; plan: CoachRule[]; trackRecord: CoachTrackRecord | null; chart: CoachChartPoint[];
+  headline: string; speech: string; disclaimer: string; dataHash: string; riskLevel: number; auditRecordId: number | null;
+}
+
+export const coachApi = {
+  analysis: (symbol: string, agentId?: number | null) =>
+    api.get<CoachAnalysis>("/coach/analysis", { params: { symbol, agentId: agentId ?? undefined } }).then((r) => r.data),
+  chat: (messages: AssistantMessage[], ctx: { symbol?: string; page?: string; agentId?: number | null }) =>
+    api.post<AssistantReply>("/coach/chat", { messages, symbol: ctx.symbol, page: ctx.page, agentId: ctx.agentId ?? undefined }).then((r) => r.data),
+};
+
+// --- Flash d'actualites du trading dans le monde ---
+export type NewsTopic = "WORLD" | "STOCKS" | "CRYPTO" | "FOREX" | "COMMODITIES" | "RATES";
+export interface FlashItem {
+  title: string; source: string; url: string; publishedAt: string | null; minutesAgo: number | null;
+  sentiment: "POSITIVE" | "NEGATIVE" | "NEUTRAL";
+}
+export interface NewsFlash { topic: NewsTopic; label: string; items: FlashItem[]; generatedAt: string }
+
+/** Chaine d'information boursiere en direct : `videoId` = diffusion en cours verifiee, nul si non reperee. */
+export interface TvChannel {
+  id: string; name: string; language: "EN" | "AR" | "FR"; channelId: string; videoId: string | null; live: boolean; watchUrl: string;
+}
+
+export const newsApi = {
+  flash: (topic: NewsTopic = "WORLD", limit = 8) => api.get<NewsFlash>("/news/flash", { params: { topic, limit } }).then((r) => r.data),
+  tv: () => api.get<TvChannel[]>("/news/tv").then((r) => r.data),
 };
 
 // ─── Module 7 : Stress Testing Bancaire & Actuariat ──────────────────────────

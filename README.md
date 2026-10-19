@@ -1,3 +1,5 @@
+<p align="center"><img src="src/assets/logo.png" alt="MarketSim AI" width="220" /></p>
+
 # MarketSim AI — Frontend (React)
 
 Interface du simulateur de salle de marché **MarketSim AI** (Esprit — PIF 2026-2027).
@@ -35,6 +37,8 @@ src/
 ├── auth/                AuthContext (utilisateur connecté), ProtectedRoute
 ├── layout/              AppLayout (sidebar + header), navConfig (menu)
 ├── shared/ui.tsx        petits composants communs (CardShell, SignalBadge...)
+├── modules/coach/       Coach de trading flottant, présent sur tous les écrans (voix, forme d'onde, analyse de la courbe)
+├── modules/news/        « Trading TV » : chaînes d'info boursière en direct (vidéo) + flash audio des actualités
 ├── modules/
 │   ├── auth/            Module 1 — Login / Register
 │   ├── admin/           Module 1 — Back-office (comptes)
@@ -43,12 +47,14 @@ src/
 │   ├── analysis/        Module 3  ✅ stratégies branchées sur l'API
 │   ├── education/       Module 4  ✅ cours branchés sur l'API
 │   ├── market/          Module 5  (mockData pour l'instant)
-│   ├── agent/           Module 6  (mockData pour l'instant)
+│   ├── agent/           Module 6  ✅ branché sur l'API (assistant, pilote auto, XAI, Monte Carlo, RL, données réelles, tournoi, replay, audit)
 │   ├── stress/          Module 7  ✅ scénarios branchés sur l'API
 │   └── blockchain/      Volet Blockchain (mockData)
 ├── app/App.tsx          les routes
 └── app/components/ui/   composants shadcn/ui prêts à l'emploi (Dialog, Table, Tabs, Select...)
 ```
+
+Le Replay de l'agent (`modules/agent/components/ReplayPanel.tsx`) trace un graphique en bougies (`CandleChart.tsx`) et propose un **mode débutant** à 1 000 € virtuels avec le coach IA (`BeginnerSchool.tsx`, logique pure dans `schoolLogic.ts`, testée par `npm run test:logic`).
 
 Chaque module a un fichier `mockData.tsx` : ce sont les données fictives du template.
 **Le travail de chacun = remplacer les mockData de son module par des appels API**, exemple :

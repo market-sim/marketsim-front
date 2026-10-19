@@ -2,6 +2,8 @@ import type { AgentAction, AgentStrategy, PriceModel } from "../../api/endpoints
 
 /** 0.0523 -> "+5.23 %" */
 export const pctSigned = (v: number, digits = 1) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(digits)} %`;
+/** Empreinte SHA-256 abregee : "49e6181905…a497d7". */
+export const shortHash = (h: string) => `${h.slice(0, 10)}…${h.slice(-6)}`;
 /** 0.0523 -> "5.2 %" */
 export const pctPlain = (v: number, digits = 1) => `${(v * 100).toFixed(digits)} %`;
 

@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
-import { Bell, ChevronRight, Layers, LogOut, Menu, Search } from "lucide-react";
+import { Bell, ChevronRight, LogOut, Menu, Search } from "lucide-react";
 import { DISPLAY } from "../shared/ui";
+import { BrandName, logoMark } from "../shared/brand";
 import { useAuth } from "../auth/AuthContext";
 import MarketTicker from "./MarketTicker";
 import ThemeToggle from "../theme/ThemeToggle";
 import { adminNavItem, navItems, pageTitles } from "./navConfig";
+import CoachDock from "../modules/coach/CoachDock";
+import { CoachProvider } from "../modules/coach/coachFocus";
 
 /** Sidebar + header du template ; la page du module s'affiche dans <Outlet />. */
 export default function AppLayout() {
@@ -21,6 +24,7 @@ export default function AppLayout() {
     `w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${isActive ? "bg-blue-600 text-white" : "text-white/55 hover:bg-white/10 hover:text-white"} ${collapsed ? "justify-center" : ""}`;
 
   return (
+    <CoachProvider>
     <div className="flex flex-col h-screen overflow-hidden bg-background">
       {/* ── Bandeau des marches mondiaux (module 6) ── */}
       <MarketTicker />
@@ -28,12 +32,10 @@ export default function AppLayout() {
       {/* ── Sidebar ── */}
       <aside className={`flex flex-col shrink-0 transition-all duration-200 ${collapsed ? "w-16" : "w-60"}`} style={{ background: "#0D1B3E" }}>
         <div className="flex items-center gap-3 h-16 px-4 border-b border-white/10 shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center shrink-0">
-            <Layers className="w-4 h-4 text-white" />
-          </div>
+          <img src={logoMark} alt="MarketSim AI" className={`object-contain shrink-0 ${collapsed ? "w-8 h-8" : "w-10 h-10"}`} />
           {!collapsed && (
             <div>
-              <div className="text-sm font-semibold text-white tracking-wide" style={DISPLAY}>MarketSim AI</div>
+              <BrandName className="text-sm font-semibold tracking-wide" style={DISPLAY} />
               <div className="text-[10px] text-blue-300/70">Simulation Platform</div>
             </div>
           )}
@@ -134,6 +136,9 @@ export default function AppLayout() {
         </main>
       </div>
       </div>
+      {/* ── Coach de trading : present sur tous les ecrans ── */}
+      <CoachDock />
     </div>
+    </CoachProvider>
   );
 }
