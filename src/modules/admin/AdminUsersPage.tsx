@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import axios from "axios";
 import { Trash2 } from "lucide-react";
-import { adminApi, type User } from "../../api/endpoints";
+import { adminApi, type SecurityScore, type User } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
 import { CardShell, DISPLAY } from "../../shared/ui";
 
@@ -8,6 +9,13 @@ import { CardShell, DISPLAY } from "../../shared/ui";
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [error, setError] = useState("");
+  const [selected, setSelected] = useState<User | null>(null);
+  const [score, setScore] = useState<SecurityScore | null>(null);
+  const [scoreLoading, setScoreLoading] = useState(false);
+  const [scoreError, setScoreError] = useState("");
+  const [scoreMissing, setScoreMissing] = useState(false);
+  const scoreRequestRef = useRef<AbortController | null>(null);
+  const selectedIdRef = useRef<number | null>(null);
 
   const load = () => adminApi.users().then(setUsers).catch((e) => setError(errorMessage(e)));
   useEffect(() => { load(); }, []);
@@ -17,10 +25,52 @@ export default function AdminUsersPage() {
     load();
   };
 
+  const closeDetails = () => {
+    scoreRequestRef.current?.abort();
+    scoreRequestRef.current = null;
+    selectedIdRef.current = null;
+    setSelected(null);
+    setScore(null);
+    setScoreError("");
+    setScoreMissing(false);
+    setScoreLoading(false);
+  };
+
   const remove = async (u: User) => {
     if (!confirm(`Supprimer ${u.email} ?`)) return;
     await adminApi.deleteUser(u.id);
+    if (selectedIdRef.current === u.id) closeDetails();
     load();
+  };
+
+  const openDetails = (u: User) => {
+    scoreRequestRef.current?.abort();
+    const controller = new AbortController();
+    scoreRequestRef.current = controller;
+    selectedIdRef.current = u.id;
+    setSelected(u);
+    setScore(null);
+    setScoreError("");
+    setScoreMissing(false);
+    setScoreLoading(true);
+    adminApi.userSecurityScore(u.id, controller.signal)
+      .then((data) => {
+        if (controller.signal.aborted || selectedIdRef.current !== u.id || data.userId !== u.id) return;
+        setScore(data);
+      })
+      .catch((e) => {
+        if (controller.signal.aborted || selectedIdRef.current !== u.id) return;
+        if (axios.isCancel(e)) return;
+        if (axios.isAxiosError(e) && e.response?.status === 404) {
+          setScoreMissing(true);
+        } else {
+          setScoreError(errorMessage(e));
+        }
+      })
+      .finally(() => {
+        if (controller.signal.aborted || selectedIdRef.current !== u.id) return;
+        setScoreLoading(false);
+      });
   };
 
   return (
@@ -40,6 +90,7 @@ export default function AdminUsersPage() {
               <th className="text-left px-5 py-3">Niveau</th>
               <th className="text-right px-5 py-3">Statut</th>
               <th className="px-5 py-3" />
+              <th className="px-5 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-border/40">
@@ -57,6 +108,11 @@ export default function AdminUsersPage() {
                   </button>
                 </td>
                 <td className="px-5 py-3.5 text-right">
+                  <button onClick={() => openDetails(u)} className="text-[11px] font-medium text-blue-600 hover:underline">
+                    Détails
+                  </button>
+                </td>
+                <td className="px-5 py-3.5 text-right">
                   {u.role !== "ADMIN" && (
                     <button onClick={() => remove(u)} className="text-muted-foreground hover:text-red-600">
                       <Trash2 className="w-3.5 h-3.5" />
@@ -68,6 +124,33 @@ export default function AdminUsersPage() {
           </tbody>
         </table>
       </div>
+
+      {selected && (
+        <div className="border-t border-border/60 px-5 py-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold text-foreground" style={DISPLAY}>
+              Score de {selected.firstName} {selected.lastName}
+            </h4>
+            <button onClick={closeDetails} className="text-xs text-muted-foreground hover:text-foreground">Fermer</button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">Consultatif. Ne modifie ni le rôle, ni l&apos;activation, ni le verrouillage.</p>
+          {scoreLoading && <p className="text-xs text-muted-foreground">Chargement du score...</p>}
+          {!scoreLoading && scoreMissing && (
+            <p className="text-xs text-muted-foreground">Aucun score pour cet utilisateur.</p>
+          )}
+          {!scoreLoading && scoreError && <p className="text-xs text-red-600 dark:text-red-400">{scoreError}</p>}
+          {!scoreLoading && !scoreMissing && !scoreError && !score && (
+            <p className="text-xs text-muted-foreground">Aucun score disponible.</p>
+          )}
+          {!scoreLoading && score && score.userId === selected.id && (
+            <p className="text-[12px] text-foreground">
+              {score.insufficientEvidence
+                ? `Preuves insuffisantes (${score.assessmentCount} évaluation(s) qualifiée(s)). Pas de score inventé.`
+                : `Score ${score.score ?? "—"} · bande ${score.riskBand ?? "—"} · ${score.assessmentCount} évaluations`}
+            </p>
+          )}
+        </div>
+      )}
     </CardShell>
   );
 }

@@ -5,7 +5,11 @@ import ProtectedRoute from "../auth/ProtectedRoute";
 import AppLayout from "../layout/AppLayout";
 import LoginPage from "../modules/auth/LoginPage";
 import RegisterPage from "../modules/auth/RegisterPage";
+import ProfilePage from "../modules/auth/ProfilePage";
 import AdminUsersPage from "../modules/admin/AdminUsersPage";
+import AdminSettingsPage from "../modules/admin/AdminSettingsPage";
+import AdminActivityLogsPage from "../modules/admin/AdminActivityLogsPage";
+import AdminLoginAnomaliesPage from "../modules/admin/AdminLoginAnomaliesPage";
 import DashboardPage from "../modules/dashboard/DashboardPage";
 import TradingPage from "../modules/trading/TradingPage";
 import AnalysisPage from "../modules/analysis/AnalysisPage";
@@ -28,6 +32,7 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
               <Route index element={<DashboardPage />} />
+              <Route path="profile" element={<ProfilePage />} />
               <Route path="trading" element={<TradingPage />} />
               <Route path="analysis" element={<AnalysisPage />} />
               <Route path="education" element={<EducationPage />} />
@@ -39,6 +44,9 @@ export default function App() {
               {/* Reserve aux admins */}
               <Route element={<ProtectedRoute adminOnly />}>
                 <Route path="admin" element={<AdminUsersPage />} />
+                <Route path="admin/settings" element={<AdminSettingsPage />} />
+                <Route path="admin/activity" element={<AdminActivityLogsPage />} />
+                <Route path="admin/login-anomalies" element={<AdminLoginAnomaliesPage />} />
               </Route>
             </Route>
           </Route>

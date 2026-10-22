@@ -17,20 +17,190 @@ export interface User {
 }
 export interface AuthResponse { token: string; user: User }
 
+export interface UpdateProfileRequest {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  currentPassword?: string;
+  newPassword?: string;
+}
+
+export interface UserProfileResponse {
+  id: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  token?: string | null;
+}
+
 export const authApi = {
   login: (email: string, password: string) =>
     api.post<AuthResponse>("/auth/login", { email, password }).then((r) => r.data),
   register: (data: { firstName: string; lastName: string; email: string; password: string }) =>
     api.post<AuthResponse>("/auth/register", data).then((r) => r.data),
   me: () => api.get<User>("/users/me").then((r) => r.data),
+  updateProfile: (data: UpdateProfileRequest) =>
+    api.patch<UserProfileResponse>("/users/me", data).then((r) => r.data),
+  registrationStatus: () =>
+    api.get<{ registrationEnabled: boolean }>("/auth/registration-status").then((r) => r.data),
+  mySecurityScore: () => api.get<SecurityScore>("/users/me/security-score").then((r) => r.data),
 };
+
+export interface GlobalUserSettings {
+  registrationEnabled: boolean;
+  maxFailedLoginAttempts: number;
+  lockDurationMinutes: number;
+  version: number;
+  updatedAt: string;
+}
+
+export interface UpdateGlobalUserSettingsRequest {
+  registrationEnabled: boolean;
+  maxFailedLoginAttempts: number;
+  lockDurationMinutes: number;
+  version: number;
+}
+
+export type ActivityAction =
+  | "REGISTER"
+  | "LOGIN"
+  | "PROFILE_UPDATE"
+  | "ADMIN_SET_ENABLED"
+  | "ADMIN_DELETE_USER"
+  | "SETTINGS_UPDATE";
+
+export type ActivityOutcome = "SUCCESS" | "FAILURE";
+
+export interface ActivityLog {
+  id: number;
+  occurredAt: string;
+  actorId: number | null;
+  targetUserId: number | null;
+  action: ActivityAction;
+  outcome: ActivityOutcome;
+  reasonCode: string;
+  correlationId?: string | null;
+}
+
+export interface ActivityFieldChange {
+  field: string;
+  before: string | null;
+  after: string | null;
+}
+
+export interface ActivityLogDetail extends ActivityLog {
+  detailsAvailable: boolean;
+  passwordChanged: boolean;
+  changes: ActivityFieldChange[];
+}
+
+export interface ActivityLogPage {
+  content: ActivityLog[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+export interface ActivityLogQuery {
+  actorId?: string;
+  action?: ActivityAction | "";
+  outcome?: ActivityOutcome | "";
+  from?: string;
+  to?: string;
+  page?: number;
+  size?: number;
+}
+
+export type SecurityRiskBand = "LOW" | "MEDIUM" | "HIGH";
+
+export interface SecurityScore {
+  userId: number;
+  score: number | null;
+  riskBand: SecurityRiskBand | null;
+  assessmentCount: number;
+  insufficientEvidence: boolean;
+  computedAt: string;
+}
 
 export const adminApi = {
   users: () => api.get<User[]>("/admin/users").then((r) => r.data),
+  userSecurityScore: (userId: number, signal?: AbortSignal) =>
+    api.get<SecurityScore>(`/admin/users/${userId}/security-score`, { signal }).then((r) => r.data),
   setEnabled: (id: number, value: boolean) =>
     api.patch<User>(`/admin/users/${id}/enabled`, null, { params: { value } }).then((r) => r.data),
   deleteUser: (id: number) => api.delete(`/admin/users/${id}`),
+  getUserSettings: () => api.get<GlobalUserSettings>("/admin/settings/users").then((r) => r.data),
+  updateUserSettings: (data: UpdateGlobalUserSettingsRequest) =>
+    api.put<GlobalUserSettings>("/admin/settings/users", data).then((r) => r.data),
+  activityLogs: (query: ActivityLogQuery = {}) => {
+    const params: Record<string, string | number> = {
+      page: query.page ?? 0,
+      size: query.size ?? 20,
+    };
+    if (query.actorId) params.actorId = Number(query.actorId);
+    if (query.action) params.action = query.action;
+    if (query.outcome) params.outcome = query.outcome;
+    if (query.from) params.from = query.from;
+    if (query.to) params.to = query.to;
+    return api.get<ActivityLogPage>("/admin/activity-logs", { params }).then((r) => r.data);
+  },
+  activityLogDetail: (id: number) =>
+    api.get<ActivityLogDetail>(`/admin/activity-logs/${id}`).then((r) => r.data),
+  loginAnomalies: (query: LoginAnomalyQuery = {}) => {
+    const params: Record<string, string | number> = {
+      page: query.page ?? 0,
+      size: query.size ?? 20,
+    };
+    if (query.actorId) params.actorId = Number(query.actorId);
+    if (query.activityLogId) params.activityLogId = Number(query.activityLogId);
+    if (query.riskLevel) params.riskLevel = query.riskLevel;
+    if (query.status) params.status = query.status;
+    if (query.from) params.from = query.from;
+    if (query.to) params.to = query.to;
+    return api.get<LoginAnomalyPage>("/admin/login-anomalies", { params }).then((r) => r.data);
+  },
+  loginAnomalyDetail: (id: number) =>
+    api.get<LoginAnomalyDetail>(`/admin/login-anomalies/${id}`).then((r) => r.data),
 };
+
+export type LoginAnomalyStatus = "ASSESSED" | "INSUFFICIENT_HISTORY" | "UNAVAILABLE";
+export type LoginRiskLevel = "LOW" | "MEDIUM" | "HIGH";
+
+export interface LoginAnomaly {
+  id: number;
+  activityLogId: number;
+  actorId: number | null;
+  occurredAt: string;
+  status: LoginAnomalyStatus;
+  riskScore: number | null;
+  riskLevel: LoginRiskLevel | null;
+  reasonCodes: string[];
+  modelVersion: string | null;
+}
+
+export interface LoginAnomalyDetail extends LoginAnomaly {
+  featureSummary: Record<string, unknown>;
+}
+
+export interface LoginAnomalyPage {
+  content: LoginAnomaly[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+export interface LoginAnomalyQuery {
+  actorId?: string;
+  activityLogId?: string | number;
+  riskLevel?: LoginRiskLevel | "";
+  status?: LoginAnomalyStatus | "";
+  from?: string;
+  to?: string;
+  page?: number;
+  size?: number;
+}
 
 // ─── Module 2 : Trading & Gestion du Risque ──────────────────────────────────
 export interface TradeOrder {

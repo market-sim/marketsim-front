@@ -8,6 +8,9 @@ import {
   Activity,
   Shield,
   Lock,
+  Settings,
+  ScrollText,
+  ShieldAlert,
 } from "lucide-react";
 
 // Menu lateral : une entree par module (path = route React).
@@ -23,6 +26,13 @@ export const navItems = [
 ];
 
 export const adminNavItem = { path: "/admin", label: "Admin Panel", Icon: Lock };
+export const adminSettingsNavItem = { path: "/admin/settings", label: "Paramètres", Icon: Settings };
+export const adminActivityNavItem = { path: "/admin/activity", label: "Activité", Icon: ScrollText };
+export const adminLoginAnomaliesNavItem = {
+  path: "/admin/login-anomalies",
+  label: "Anomalies login",
+  Icon: ShieldAlert,
+};
 
 export const pageTitles: Record<string, { title: string; sub: string }> = {
   "/":           { title: "Dashboard",             sub: "Virtual Portfolio Overview"                    },
@@ -33,5 +43,12 @@ export const pageTitles: Record<string, { title: string; sub: string }> = {
   "/agent":      { title: "AI Trading Agent",       sub: "Autonomous RL Agent · XAI Explanations"        },
   "/stress":     { title: "Stress Testing",         sub: "Scenario Simulation · Bank Resilience"         },
   "/blockchain": { title: "Blockchain Layer",       sub: "Immutable Records · Certificates · Audit Trail" },
-  "/admin":      { title: "Administration",         sub: "Comptes utilisateurs · Module 1"               },
+  "/admin":          { title: "Administration",         sub: "Comptes utilisateurs · Module 1"               },
+  "/admin/settings": { title: "Paramètres",             sub: "Inscription · Verrouillage · Module 1"         },
+  "/admin/activity": { title: "Journal d'activité",    sub: "Connexions · Profil · Admin · Module 1"       },
+  "/admin/login-anomalies": {
+    title: "Anomalies de connexion",
+    sub: "Risque IA consultatif · Module 1",
+  },
+  "/profile":        { title: "Profil",                 sub: "Nom · Email · Mot de passe"                    },
 };

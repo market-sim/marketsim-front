@@ -40,6 +40,9 @@ export default function LoginPage() {
           <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className={inputClass} />
         </div>
         {error && <p className="text-xs text-red-600">{error}</p>}
+        {error.toLowerCase().includes("verrouill") && (
+          <p className="text-[11px] text-amber-700">Réessayez après la fin du verrouillage temporaire.</p>
+        )}
         <button disabled={busy} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 transition-colors">
           {busy ? "Connexion..." : "Se connecter"}
         </button>
