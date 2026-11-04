@@ -1,0 +1,256 @@
+import { useEffect, useState } from "react";
+import { Bot, Brain, Database, Dices, Gamepad2, GraduationCap, Link2, Pencil, Plus, Power, Sparkles, Trash2, Trophy, Wand2 } from "lucide-react";
+import { agentsApi, assetsApi, type AgentConfig, type AnomalyReport, type Asset } from "../../api/endpoints";
+import { errorMessage } from "../../api/client";
+import { CardShell, DISPLAY } from "../../shared/ui";
+import { useCoachFocus } from "../coach/coachFocus";
+import NewsScreen from "../news/NewsScreen";
+import AgentFormModal from "./components/AgentFormModal";
+import AssistantPanel from "./components/AssistantPanel";
+import AuditPanel from "./components/AuditPanel";
+import AutopilotPanel from "./components/AutopilotPanel";
+import DecisionsPanel from "./components/DecisionsPanel";
+import MonteCarloPanel from "./components/MonteCarloPanel";
+import ReplayPanel from "./components/ReplayPanel";
+import TournamentPanel from "./components/TournamentPanel";
+import TrainingPanel from "./components/TrainingPanel";
+import WalkForwardPanel from "./components/WalkForwardPanel";
+import { personalities, personalityOf, strategyLabel, strategyShort } from "./format";
+
+type Tab = "assistant" | "autopilot" | "decisions" | "montecarlo" | "training" | "realdata" | "tournament" | "replay" | "audit";
+
+const TABS: { id: Tab; label: string; Icon: typeof Brain }[] = [
+  { id: "assistant", label: "Assistant IA", Icon: Sparkles },
+  { id: "autopilot", label: "Pilote auto", Icon: Power },
+  { id: "decisions", label: "Décisions & XAI", Icon: Brain },
+  { id: "montecarlo", label: "Monte Carlo", Icon: Dices },
+  { id: "training", label: "Entraînement RL", Icon: GraduationCap },
+  { id: "realdata", label: "Données réelles", Icon: Database },
+  { id: "tournament", label: "Tournoi", Icon: Trophy },
+  { id: "replay", label: "Replay vs Agent", Icon: Gamepad2 },
+  { id: "audit", label: "Audit blockchain", Icon: Link2 },
+];
+
+/** Module 6 : Agent de Trading Intelligent. */
+export default function AgentPage() {
+  const [agents, setAgents] = useState<AgentConfig[]>([]);
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [tab, setTab] = useState<Tab>("decisions");
+  const [modal, setModal] = useState<"create" | "edit" | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState("");
+  const [reports, setReports] = useState<AnomalyReport[]>([]);
+  const [demoBusy, setDemoBusy] = useState(false);
+  const [auditFocus, setAuditFocus] = useState<number | null>(null);
+  const loadReports = () => agentsApi.allAnomalies().then(setReports).catch(() => setReports([]));
+
+  const load = async (selectId?: number) => {
+    try {
+      const list = await agentsApi.list();
+      setAgents(list);
+      setSelectedId((cur) => selectId ?? (list.some((a) => a.id === cur) ? cur : list[0]?.id ?? null));
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setLoaded(true);
+    }
+  };
+
+  useEffect(() => {
+    load();
+    loadReports();
+    assetsApi.list().then(setAssets).catch(() => setAssets([]));
+  }, []);
+
+  const agent = agents.find((a) => a.id === selectedId) ?? null;
+
+  // le coach (present sur tous les ecrans) analyse l'actif principal de l'agent selectionne, avec son appetit pour le risque
+  useCoachFocus(agent?.allowedAssets.split(",")[0]?.trim() || undefined, agent?.id);
+
+  const save = async (data: AgentConfig) => {
+    const saved = modal === "edit" && agent ? await agentsApi.update(agent.id!, data) : await agentsApi.create(data);
+    setModal(null);
+    await load(saved.id);
+  };
+
+  const toggle = async () => {
+    if (!agent) return;
+    await agentsApi.toggle(agent.id!);
+    load();
+  };
+
+  const remove = async () => {
+    if (!agent || !confirm(`Supprimer l'agent « ${agent.name} » et tout son historique ?`)) return;
+    await agentsApi.remove(agent.id!);
+    load();
+  };
+
+  /** Remplit le compte avec 4 agents de demonstration, puis ouvre la demo de surveillance. */
+  const generateDemo = async () => {
+    setDemoBusy(true);
+    setError("");
+    try {
+      const d = await agentsApi.demo();
+      // resultats deja calcules : affiches directement dans les onglets Tournoi et Monte Carlo
+      try {
+        sessionStorage.setItem("marketsim:tournament:last", JSON.stringify(d.tournament));
+        sessionStorage.setItem(`marketsim:mc:${d.rlAgentId}`, JSON.stringify(d.rlMonteCarlo));
+      } catch {
+        // stockage indisponible : les resultats restent consultables en relancant
+      }
+      await load(d.surveillanceAgentId);
+      await loadReports();
+      setTab("decisions");
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setDemoBusy(false);
+    }
+  };
+
+  const demoButton = (
+    <button onClick={generateDemo} disabled={demoBusy} title="Crée 4 agents avec décisions, entraînement, Monte Carlo, tournoi et une alerte de surveillance"
+      className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-60">
+      <Wand2 className="w-4 h-4" />{demoBusy ? "Génération (quelques secondes)…" : "Générer des données de démo"}
+    </button>
+  );
+
+  const modalEl = modal && (
+    <AgentFormModal initial={modal === "edit" ? agent ?? undefined : undefined} assets={assets} onSave={save} onClose={() => setModal(null)} />
+  );
+
+  if (loaded && agents.length === 0) {
+    return (
+      <>
+        <CardShell className="p-10 text-center">
+          <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
+            <Bot className="w-6 h-6 text-blue-600" />
+          </div>
+          <h3 className="text-base font-semibold text-foreground" style={DISPLAY}>Aucun agent de trading</h3>
+          <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+            Créez un agent IA : il analyse le marché, explique chacune de ses décisions (XAI), se teste sur des milliers
+            de scénarios Monte Carlo et peut apprendre par renforcement.
+          </p>
+          {error && <p className="text-xs text-red-600 mt-3">{error}</p>}
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+            <button onClick={() => setModal("create")} className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg px-4 py-2">
+              <Plus className="w-4 h-4" />Créer mon premier agent
+            </button>
+            {demoButton}
+          </div>
+        </CardShell>
+        {modalEl}
+      </>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Selection de l'agent */}
+      <div className="flex flex-wrap items-center gap-2">
+        {agents.map((a) => (
+          <button key={a.id} onClick={() => setSelectedId(a.id!)}
+            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm border transition-colors ${a.id === selectedId ? "bg-white border-blue-500 shadow-sm" : "bg-white/60 border-border/60 hover:border-blue-200"}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${a.active ? "bg-emerald-500" : "bg-slate-300"}`} />
+            <span className="font-medium text-foreground">{a.name}</span>
+            {(() => {
+              const r = reports.find((x) => x.agentId === a.id);
+              if (!r || (r.status !== "ALERT" && r.status !== "WATCH")) return null;
+              return <span title={r.summary} className={`text-[10px] font-bold px-1.5 rounded ${r.status === "ALERT" ? "bg-red-500 text-white" : "bg-amber-400 text-amber-950"}`}>⚠</span>;
+            })()}
+            <span className="text-[10px] text-muted-foreground">{strategyShort[a.strategy]}</span>
+          </button>
+        ))}
+        <button onClick={() => setModal("create")} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-blue-600 font-medium hover:bg-blue-50">
+          <Plus className="w-4 h-4" />Nouvel agent
+        </button>
+        {demoButton}
+      </div>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+
+      {agent && (
+        <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 items-start">
+          {/* Colonne de gauche : fiche de l'agent + ecran d'actualites parlant (reste visible pendant qu'on defile) */}
+          <div className="space-y-4 min-w-0 xl:self-stretch">
+          <CardShell className="p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
+                <Bot className="w-5 h-5 text-blue-600" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-foreground truncate" style={DISPLAY}>{agent.name}</h3>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className={`w-1.5 h-1.5 rounded-full ${agent.active ? "bg-emerald-500" : "bg-slate-400"}`} />
+                  <span className="text-[11px] text-muted-foreground">{agent.active ? "Actif · exécute ses ordres" : "En pause · simulation"}</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              {[
+                { label: "Personnalité", value: `${personalities[personalityOf(agent.riskLevel)].emoji} ${personalities[personalityOf(agent.riskLevel)].label}` },
+                { label: "Stratégie", value: strategyLabel[agent.strategy] },
+                { label: "Actifs", value: agent.allowedAssets.split(",").join(", ") },
+                { label: "Capital / position", value: `$${Number(agent.maxPositionSize).toLocaleString("en-US")}` },
+                ...(agent.strategy === "Q_LEARNING"
+                  ? [{ label: "Apprentissage", value: agent.trained ? `${agent.trainedEpisodes} épisodes (${agent.trainedOn})` : "Non entraîné" }]
+                  : []),
+              ].map(({ label, value }) => (
+                <div key={label} className="flex items-start justify-between py-2 border-b border-border/40 text-[12px]">
+                  <span className="text-muted-foreground shrink-0">{label}</span>
+                  <span className="font-medium text-foreground text-right ml-3">{value}</span>
+                </div>
+              ))}
+              <div className="py-2.5">
+                <div className="flex justify-between text-[12px] mb-1">
+                  <span className="text-muted-foreground">Appétit pour le risque</span>
+                  <span className="font-medium text-foreground">{agent.riskLevel} / 100</span>
+                </div>
+                <div className="h-1.5 bg-muted rounded-full">
+                  <div className={`h-1.5 rounded-full ${agent.riskLevel > 66 ? "bg-red-500" : agent.riskLevel > 33 ? "bg-amber-400" : "bg-emerald-500"}`} style={{ width: `${agent.riskLevel}%` }} />
+                </div>
+              </div>
+            </div>
+
+            <button onClick={toggle} className={`w-full mt-3 py-2 rounded-lg text-sm font-semibold transition-colors ${agent.active ? "bg-amber-50 text-amber-700 hover:bg-amber-100" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"}`}>
+              {agent.active ? "Mettre en pause" : "Activer l'agent"}
+            </button>
+            <div className="flex gap-2 mt-2">
+              <button onClick={() => setModal("edit")} className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[12px] font-medium border border-border text-muted-foreground hover:bg-muted/40">
+                <Pencil className="w-3 h-3" />Modifier
+              </button>
+              <button onClick={remove} className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[12px] font-medium border border-border text-red-500 hover:bg-red-50">
+                <Trash2 className="w-3 h-3" />Supprimer
+              </button>
+            </div>
+          </CardShell>
+          <div className="hidden xl:block xl:sticky xl:top-2"><NewsScreen /></div>
+          </div>
+
+          {/* Laboratoire IA */}
+          <div className="xl:col-span-3 space-y-4 min-w-0">
+            <div className="flex flex-wrap gap-1 bg-white rounded-xl border border-border/60 p-1 w-fit">
+              {TABS.map(({ id, label, Icon }) => (
+                <button key={id} onClick={() => setTab(id)}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${tab === id ? "bg-blue-600 text-white" : "text-muted-foreground hover:bg-muted/50"}`}>
+                  <Icon className="w-3.5 h-3.5" />{label}
+                </button>
+              ))}
+            </div>
+            {tab === "assistant" && <AssistantPanel agentId={agent.id} agentName={agent.name} />}
+            {tab === "autopilot" && <AutopilotPanel agent={agent} />}
+            {tab === "decisions" && <DecisionsPanel agent={agent} onChange={loadReports} />}
+            {tab === "montecarlo" && <MonteCarloPanel agent={agent} />}
+            {tab === "training" && <TrainingPanel agent={agent} onTrained={() => load()} />}
+            {tab === "realdata" && <WalkForwardPanel agent={agent} onOpenAudit={(id) => { setAuditFocus(id); setTab("audit"); }} />}
+            {tab === "tournament" && <TournamentPanel agents={agents} assets={assets} />}
+            {tab === "replay" && <ReplayPanel agent={agent} />}
+            {tab === "audit" && <AuditPanel agent={agent} focusRecordId={auditFocus} onFocusConsumed={() => setAuditFocus(null)} />}
+          </div>
+        </div>
+      )}
+      {modalEl}
+    </div>
+  );
+}
