@@ -589,6 +589,41 @@ export const marketTicksApi = {
     api.get<PriceTick[]>("/market/ticks", { params: { symbol, hours } }).then((r) => r.data),
 };
 
+export type SentimentLabel = "POSITIVE" | "NEUTRAL" | "NEGATIVE";
+
+/** Actualité financière importée avec score de sentiment calculé côté serveur. */
+export interface MarketNews {
+  id: number;
+  headline: string;
+  source: string;
+  url: string | null;
+  symbol: string;
+  publishedAt: string;   // ISO-8601 UTC
+  sentimentScore: number; // −1.0 … +1.0, jamais null
+  sentimentLabel: SentimentLabel;
+  importedAt: string;    // ISO-8601 UTC
+}
+
+/** Corps envoyé par l'admin pour importer un article (le sentiment est calculé côté serveur). */
+export interface MarketNewsRequest {
+  headline: string;
+  source: string;
+  url?: string | null;
+  symbol: string;
+  publishedAt: string; // ISO-8601 UTC
+}
+
+export const marketNewsApi = {
+  /** Toutes les actualités, ou filtrées par symbole si fourni. */
+  list: (symbol?: string) =>
+    api.get<MarketNews[]>("/market/news", { params: symbol ? { symbol } : {} }).then((r) => r.data),
+  /** Importer un article (ADMIN). Le sentiment est calculé automatiquement. */
+  create: (req: MarketNewsRequest) =>
+    api.post<MarketNews>("/market/news", req).then((r) => r.data),
+  /** Supprimer un article (ADMIN). */
+  remove: (id: number) => api.delete(`/market/news/${id}`),
+};
+
 // ─── Module 6 : Agent de Trading Intelligent ─────────────────────────────────
 export type AgentStrategy = "MOMENTUM" | "MEAN_REVERSION" | "Q_LEARNING";
 export type AgentAction = "BUY" | "SELL" | "HOLD";
