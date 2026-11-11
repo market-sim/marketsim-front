@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { TOKEN_KEY } from "../api/client";
 import { authApi, type UpdateProfileRequest, type User } from "../api/endpoints";
 
@@ -8,6 +8,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (data: { firstName: string; lastName: string; email: string; password: string }) => Promise<void>;
   updateProfile: (data: UpdateProfileRequest) => Promise<void>;
+  setLevel: (level: string) => void;
   logout: () => void;
 }
 
@@ -54,6 +55,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } : current);
   };
 
+  const setLevel = useCallback((level: string) => {
+    setUser((current) => current ? { ...current, level } : current);
+  }, []);
+
   const logout = () => {
     localStorage.removeItem(TOKEN_KEY);
     try {
@@ -65,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, updateProfile, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, updateProfile, setLevel, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { Trash2 } from "lucide-react";
-import { adminApi, type SecurityScore, type User } from "../../api/endpoints";
+import { adminApi, type SecurityScore, type User, type UserLevelAssessment } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
+import { useAuth } from "../../auth/AuthContext";
 import { CardShell, DISPLAY } from "../../shared/ui";
 
 /** Module 1 : back-office admin — gestion des comptes utilisateurs. */
 export default function AdminUsersPage() {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<User | null>(null);
@@ -14,14 +16,35 @@ export default function AdminUsersPage() {
   const [scoreLoading, setScoreLoading] = useState(false);
   const [scoreError, setScoreError] = useState("");
   const [scoreMissing, setScoreMissing] = useState(false);
+  const [level, setLevel] = useState<UserLevelAssessment | null>(null);
+  const [levelLoading, setLevelLoading] = useState(false);
+  const [levelError, setLevelError] = useState("");
+  const [levelMissing, setLevelMissing] = useState(false);
   const scoreRequestRef = useRef<AbortController | null>(null);
   const selectedIdRef = useRef<number | null>(null);
 
   const load = () => adminApi.users().then(setUsers).catch((e) => setError(errorMessage(e)));
   useEffect(() => { load(); }, []);
 
+  const changeRole = async (u: User) => {
+    const next = u.role === "ADMIN" ? "USER" : "ADMIN";
+    if (!confirm(`Passer ${u.email} en ${next} ?`)) return;
+    setError("");
+    try {
+      await adminApi.setRole(u.id, next);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+    load();
+  };
+
   const toggle = async (u: User) => {
-    await adminApi.setEnabled(u.id, !u.enabled);
+    setError("");
+    try {
+      await adminApi.setEnabled(u.id, !u.enabled);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
     load();
   };
 
@@ -34,12 +57,21 @@ export default function AdminUsersPage() {
     setScoreError("");
     setScoreMissing(false);
     setScoreLoading(false);
+    setLevel(null);
+    setLevelError("");
+    setLevelMissing(false);
+    setLevelLoading(false);
   };
 
   const remove = async (u: User) => {
     if (!confirm(`Supprimer ${u.email} ?`)) return;
-    await adminApi.deleteUser(u.id);
-    if (selectedIdRef.current === u.id) closeDetails();
+    setError("");
+    try {
+      await adminApi.deleteUser(u.id);
+      if (selectedIdRef.current === u.id) closeDetails();
+    } catch (e) {
+      setError(errorMessage(e));
+    }
     load();
   };
 
@@ -53,6 +85,33 @@ export default function AdminUsersPage() {
     setScoreError("");
     setScoreMissing(false);
     setScoreLoading(true);
+    setLevel(null);
+    setLevelError("");
+    setLevelMissing(false);
+    setLevelLoading(true);
+    adminApi.userLevel(u.id, controller.signal)
+      .then((data) => {
+        if (controller.signal.aborted || selectedIdRef.current !== u.id || data.userId !== u.id) return;
+        setLevel(data);
+        const shownLevel = data.level ?? (data.insufficientEvidence ? "DEBUTANT" : null);
+        if (shownLevel) {
+          setUsers((rows) => rows.map((row) => row.id === data.userId ? { ...row, level: shownLevel } : row));
+          setSelected((current) => current && current.id === data.userId ? { ...current, level: shownLevel } : current);
+        }
+      })
+      .catch((e) => {
+        if (controller.signal.aborted || selectedIdRef.current !== u.id) return;
+        if (axios.isCancel(e)) return;
+        if (axios.isAxiosError(e) && e.response?.status === 404) {
+          setLevelMissing(true);
+        } else {
+          setLevelError(errorMessage(e));
+        }
+      })
+      .finally(() => {
+        if (controller.signal.aborted || selectedIdRef.current !== u.id) return;
+        setLevelLoading(false);
+      });
     adminApi.userSecurityScore(u.id, controller.signal)
       .then((data) => {
         if (controller.signal.aborted || selectedIdRef.current !== u.id || data.userId !== u.id) return;
@@ -94,16 +153,30 @@ export default function AdminUsersPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border/40">
-            {users.map((u) => (
+            {users.map((u) => {
+              const isSelf = u.id === currentUser?.id;
+              return (
               <tr key={u.id} className="hover:bg-muted/10 transition-colors">
                 <td className="px-5 py-3.5 text-sm font-medium text-foreground">{u.firstName} {u.lastName}</td>
                 <td className="px-5 py-3.5 text-[12px] text-muted-foreground">{u.email}</td>
                 <td className="px-5 py-3.5">
-                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${u.role === "ADMIN" ? "bg-violet-50 text-violet-700" : "bg-blue-50 text-blue-700"}`}>{u.role}</span>
+                  <button
+                    onClick={() => changeRole(u)}
+                    disabled={isSelf}
+                    title={isSelf ? "Vous ne pouvez pas modifier votre propre rôle" : `Passer en ${u.role === "ADMIN" ? "USER" : "ADMIN"}`}
+                    className={`text-[11px] font-semibold px-2 py-0.5 rounded-full disabled:opacity-60 disabled:cursor-not-allowed ${u.role === "ADMIN" ? "bg-violet-50 text-violet-700" : "bg-blue-50 text-blue-700"}`}
+                  >
+                    {u.role}
+                  </button>
                 </td>
                 <td className="px-5 py-3.5 text-[12px] text-muted-foreground">{u.level}</td>
                 <td className="px-5 py-3.5 text-right">
-                  <button onClick={() => toggle(u)} className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${u.enabled ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                  <button
+                    onClick={() => toggle(u)}
+                    disabled={isSelf}
+                    title={isSelf ? "Vous ne pouvez pas désactiver votre propre compte" : undefined}
+                    className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full disabled:opacity-60 disabled:cursor-not-allowed ${u.enabled ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}
+                  >
                     {u.enabled ? "Actif" : "Désactivé"}
                   </button>
                 </td>
@@ -113,14 +186,15 @@ export default function AdminUsersPage() {
                   </button>
                 </td>
                 <td className="px-5 py-3.5 text-right">
-                  {u.role !== "ADMIN" && (
+                  {u.role !== "ADMIN" && !isSelf && (
                     <button onClick={() => remove(u)} className="text-muted-foreground hover:text-red-600">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -133,7 +207,19 @@ export default function AdminUsersPage() {
             </h4>
             <button onClick={closeDetails} className="text-xs text-muted-foreground hover:text-foreground">Fermer</button>
           </div>
-          <p className="text-[11px] text-muted-foreground">Consultatif. Ne modifie ni le rôle, ni l&apos;activation, ni le verrouillage.</p>
+          <p className="text-[11px] text-muted-foreground">Le niveau et le score de connexion ne modifient ni le rôle, ni l&apos;activation, ni le verrouillage.</p>
+          {levelLoading && <p className="text-xs text-muted-foreground">Chargement du niveau...</p>}
+          {!levelLoading && levelMissing && (
+            <p className="text-xs text-muted-foreground">Aucun niveau pour cet utilisateur.</p>
+          )}
+          {!levelLoading && levelError && <p className="text-xs text-red-600 dark:text-red-400">{levelError}</p>}
+          {!levelLoading && level && level.userId === selected.id && (
+            <p className="text-[12px] text-foreground">
+              {level.insufficientEvidence
+                ? `Niveau : activité insuffisante (${level.successfulLoginCount} connexion(s) réussie(s)). Reste Débutant.`
+                : `Niveau ${level.level ?? "—"} · score ${level.score ?? "—"} · ${level.reasonCodes.join(", ") || "—"}`}
+            </p>
+          )}
           {scoreLoading && <p className="text-xs text-muted-foreground">Chargement du score...</p>}
           {!scoreLoading && scoreMissing && (
             <p className="text-xs text-muted-foreground">Aucun score pour cet utilisateur.</p>

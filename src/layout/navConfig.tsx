@@ -11,6 +11,7 @@ import {
   Settings,
   ScrollText,
   ShieldAlert,
+  PieChart,
 } from "lucide-react";
 
 // Menu lateral : une entree par module (path = route React).
@@ -26,6 +27,7 @@ export const navItems = [
 ];
 
 export const adminNavItem = { path: "/admin", label: "Admin Panel", Icon: Lock };
+export const adminStatsNavItem = { path: "/admin/stats", label: "Statistiques", Icon: PieChart };
 export const adminSettingsNavItem = { path: "/admin/settings", label: "Paramètres", Icon: Settings };
 export const adminActivityNavItem = { path: "/admin/activity", label: "Activité", Icon: ScrollText };
 export const adminLoginAnomaliesNavItem = {
@@ -44,6 +46,7 @@ export const pageTitles: Record<string, { title: string; sub: string }> = {
   "/stress":     { title: "Stress Testing",         sub: "Scenario Simulation · Bank Resilience"         },
   "/blockchain": { title: "Blockchain Layer",       sub: "Immutable Records · Certificates · Audit Trail" },
   "/admin":          { title: "Administration",         sub: "Comptes utilisateurs · Module 1"               },
+  "/admin/stats":    { title: "Statistiques",           sub: "Supervision · Comptes · Connexions · Module 1" },
   "/admin/settings": { title: "Paramètres",             sub: "Inscription · Verrouillage · Module 1"         },
   "/admin/activity": { title: "Journal d'activité",    sub: "Connexions · Profil · Admin · Module 1"       },
   "/admin/login-anomalies": {

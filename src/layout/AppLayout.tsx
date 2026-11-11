@@ -11,6 +11,7 @@ import {
   adminLoginAnomaliesNavItem,
   adminNavItem,
   adminSettingsNavItem,
+  adminStatsNavItem,
   navItems,
   pageTitles,
 } from "./navConfig";
@@ -26,7 +27,7 @@ export default function AppLayout() {
   const page = pageTitles[pathname] ?? pageTitles["/"];
   const initials = user ? `${user.firstName[0] ?? ""}${user.lastName[0] ?? ""}`.toUpperCase() : "?";
   const systemItems = user?.role === "ADMIN"
-    ? [adminNavItem, adminSettingsNavItem, adminActivityNavItem, adminLoginAnomaliesNavItem]
+    ? [adminNavItem, adminStatsNavItem, adminSettingsNavItem, adminActivityNavItem, adminLoginAnomaliesNavItem]
     : [];
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -87,7 +88,7 @@ export default function AppLayout() {
           <ul className="space-y-0.5 mt-1">
             {systemItems.map(({ path, label, Icon }) => (
               <li key={path}>
-                <NavLink to={path} className={linkClass}>
+                <NavLink to={path} end={path === adminNavItem.path} className={linkClass}>
                   <Icon className="w-4 h-4 shrink-0" />
                   {!collapsed && <span>{label}</span>}
                 </NavLink>

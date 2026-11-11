@@ -44,6 +44,7 @@ export const authApi = {
   registrationStatus: () =>
     api.get<{ registrationEnabled: boolean }>("/auth/registration-status").then((r) => r.data),
   mySecurityScore: () => api.get<SecurityScore>("/users/me/security-score").then((r) => r.data),
+  myLevel: () => api.get<UserLevelAssessment>("/users/me/level").then((r) => r.data),
 };
 
 export interface GlobalUserSettings {
@@ -67,6 +68,7 @@ export type ActivityAction =
   | "PROFILE_UPDATE"
   | "ADMIN_SET_ENABLED"
   | "ADMIN_DELETE_USER"
+  | "ADMIN_SET_ROLE"
   | "SETTINGS_UPDATE";
 
 export type ActivityOutcome = "SUCCESS" | "FAILURE";
@@ -123,10 +125,46 @@ export interface SecurityScore {
   computedAt: string;
 }
 
+export type TraderLevel = "DEBUTANT" | "INTERMEDIAIRE" | "AVANCE" | "EXPERT";
+
+export interface UserLevelAssessment {
+  userId: number;
+  level: TraderLevel | null;
+  score: number | null;
+  insufficientEvidence: boolean;
+  successfulLoginCount: number;
+  reasonCodes: string[];
+  modelVersion: string | null;
+  computedAt: string;
+}
+
+export interface AdminStats {
+  windowDays: number;
+  generatedAt: string;
+  users: {
+    total: number;
+    enabled: number;
+    disabled: number;
+    lockedNow: number;
+    newInWindow: number;
+    byRole: Record<string, number>;
+    byLevel: Record<string, number>;
+  };
+  logins: { success: number; failure: number; blockedWhileLocked: number };
+  adminActions: { setEnabled: number; deleteUser: number; deleteRefused: number; settingsUpdates: number };
+  anomalies: { assessed: number; insufficientHistory: number; byRiskLevel: Record<string, number> };
+}
+
 export const adminApi = {
   users: () => api.get<User[]>("/admin/users").then((r) => r.data),
+  stats: (days: number, signal?: AbortSignal) =>
+    api.get<AdminStats>("/admin/stats", { params: { days }, signal }).then((r) => r.data),
   userSecurityScore: (userId: number, signal?: AbortSignal) =>
     api.get<SecurityScore>(`/admin/users/${userId}/security-score`, { signal }).then((r) => r.data),
+  userLevel: (userId: number, signal?: AbortSignal) =>
+    api.get<UserLevelAssessment>(`/admin/users/${userId}/level`, { signal }).then((r) => r.data),
+  setRole: (id: number, value: Role) =>
+    api.patch<User>(`/admin/users/${id}/role`, null, { params: { value } }).then((r) => r.data),
   setEnabled: (id: number, value: boolean) =>
     api.patch<User>(`/admin/users/${id}/enabled`, null, { params: { value } }).then((r) => r.data),
   deleteUser: (id: number) => api.delete(`/admin/users/${id}`),

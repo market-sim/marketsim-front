@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "../../auth/AuthContext";
-import { authApi, type SecurityScore } from "../../api/endpoints";
+import { authApi, type SecurityScore, type UserLevelAssessment } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
 import { CardShell, DISPLAY } from "../../shared/ui";
 import { inputClass, labelClass } from "./AuthLayout";
@@ -8,7 +8,7 @@ import { inputClass, labelClass } from "./AuthLayout";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function ProfilePage() {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, setLevel } = useAuth();
   const [firstName, setFirstName] = useState(user?.firstName ?? "");
   const [lastName, setLastName] = useState(user?.lastName ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
@@ -20,6 +20,9 @@ export default function ProfilePage() {
   const [score, setScore] = useState<SecurityScore | null>(null);
   const [scoreLoading, setScoreLoading] = useState(true);
   const [scoreError, setScoreError] = useState("");
+  const [level, setLevelAssessment] = useState<UserLevelAssessment | null>(null);
+  const [levelLoading, setLevelLoading] = useState(true);
+  const [levelError, setLevelError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -37,6 +40,25 @@ export default function ProfilePage() {
       });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLevelLoading(true);
+    setLevelError("");
+    authApi.myLevel()
+      .then((data) => {
+        if (cancelled) return;
+        setLevelAssessment(data);
+        if (data.level) setLevel(data.level);
+      })
+      .catch((err) => {
+        if (!cancelled) setLevelError(errorMessage(err));
+      })
+      .finally(() => {
+        if (!cancelled) setLevelLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [setLevel]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -81,6 +103,28 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-4 max-w-lg">
+    <CardShell className="p-6">
+      <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>Niveau de trader</h3>
+      <p className="text-[11px] text-muted-foreground mt-1 mb-3">
+        Calculé par un modèle à partir de votre activité et de vos ordres. Il ne change ni le rôle ni l&apos;accès au compte.
+      </p>
+      {levelLoading && <p className="text-xs text-muted-foreground">Chargement du niveau...</p>}
+      {!levelLoading && levelError && <p className="text-xs text-red-600 dark:text-red-400">{levelError}</p>}
+      {!levelLoading && !levelError && !level && (
+        <p className="text-xs text-muted-foreground">Aucun niveau disponible.</p>
+      )}
+      {!levelLoading && level?.insufficientEvidence && (
+        <p className="text-[12px] text-foreground">
+          Activité insuffisante ({level.successfulLoginCount} connexion{level.successfulLoginCount > 1 ? "s" : ""} réussie{level.successfulLoginCount > 1 ? "s" : ""}). Le compte reste Débutant — aucun niveau n&apos;est inventé.
+        </p>
+      )}
+      {!levelLoading && level && !level.insufficientEvidence && (
+        <p className="text-[12px] text-foreground">
+          {level.level ?? "—"} · score {level.score ?? "—"} · {level.reasonCodes.join(", ") || "—"}
+          {level.modelVersion ? ` · ${level.modelVersion}` : ""}
+        </p>
+      )}
+    </CardShell>
     <CardShell className="p-6">
       <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>Score de sécurité</h3>
       <p className="text-[11px] text-muted-foreground mt-1 mb-3">

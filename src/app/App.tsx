@@ -8,6 +8,7 @@ import RegisterPage from "../modules/auth/RegisterPage";
 import ProfilePage from "../modules/auth/ProfilePage";
 import AdminUsersPage from "../modules/admin/AdminUsersPage";
 import AdminSettingsPage from "../modules/admin/AdminSettingsPage";
+import AdminStatsPage from "../modules/admin/AdminStatsPage";
 import AdminActivityLogsPage from "../modules/admin/AdminActivityLogsPage";
 import AdminLoginAnomaliesPage from "../modules/admin/AdminLoginAnomaliesPage";
 import DashboardPage from "../modules/dashboard/DashboardPage";
@@ -44,6 +45,7 @@ export default function App() {
               {/* Reserve aux admins */}
               <Route element={<ProtectedRoute adminOnly />}>
                 <Route path="admin" element={<AdminUsersPage />} />
+                <Route path="admin/stats" element={<AdminStatsPage />} />
                 <Route path="admin/settings" element={<AdminSettingsPage />} />
                 <Route path="admin/activity" element={<AdminActivityLogsPage />} />
                 <Route path="admin/login-anomalies" element={<AdminLoginAnomaliesPage />} />
