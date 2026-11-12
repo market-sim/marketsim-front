@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router";
 import { useAuth } from "../../auth/AuthContext";
+import { authApi } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
 import AuthLayout, { inputClass, labelClass } from "./AuthLayout";
 
@@ -10,6 +11,14 @@ export default function RegisterPage() {
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", password: "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [registrationEnabled, setRegistrationEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (user) return;
+    authApi.registrationStatus()
+      .then((s) => setRegistrationEnabled(s.registrationEnabled))
+      .catch(() => setRegistrationEnabled(true));
+  }, [user]);
 
   if (user) return <Navigate to="/" replace />;
 
@@ -30,35 +39,50 @@ export default function RegisterPage() {
     }
   };
 
+  const closed = registrationEnabled === false;
+
   return (
     <AuthLayout title="Inscription" subtitle="100 000 $ virtuels offerts pour commencer">
-      <form onSubmit={submit} className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={labelClass}>Prénom</label>
-            <input required value={form.firstName} onChange={set("firstName")} className={inputClass} />
-          </div>
-          <div>
-            <label className={labelClass}>Nom</label>
-            <input required value={form.lastName} onChange={set("lastName")} className={inputClass} />
-          </div>
+      {closed ? (
+        <div className="space-y-3">
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            Les inscriptions sont temporairement désactivées par l'administrateur. Les comptes existants peuvent toujours se connecter.
+          </p>
+          <p className="text-xs text-muted-foreground text-center">
+            <Link to="/login" className="text-blue-600 font-medium">Se connecter</Link>
+          </p>
         </div>
-        <div>
-          <label className={labelClass}>Email</label>
-          <input type="email" required value={form.email} onChange={set("email")} className={inputClass} />
-        </div>
-        <div>
-          <label className={labelClass}>Mot de passe (6+ caractères)</label>
-          <input type="password" required minLength={6} value={form.password} onChange={set("password")} className={inputClass} />
-        </div>
-        {error && <p className="text-xs text-red-600">{error}</p>}
-        <button disabled={busy} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 transition-colors">
-          {busy ? "Création..." : "Créer mon compte"}
-        </button>
-      </form>
-      <p className="text-xs text-muted-foreground mt-4 text-center">
-        Déjà inscrit ? <Link to="/login" className="text-blue-600 font-medium">Se connecter</Link>
-      </p>
+      ) : (
+        <>
+          <form onSubmit={submit} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelClass}>Prénom</label>
+                <input required value={form.firstName} onChange={set("firstName")} className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Nom</label>
+                <input required value={form.lastName} onChange={set("lastName")} className={inputClass} />
+              </div>
+            </div>
+            <div>
+              <label className={labelClass}>Email</label>
+              <input type="email" required value={form.email} onChange={set("email")} className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Mot de passe (6+ caractères)</label>
+              <input type="password" required minLength={6} value={form.password} onChange={set("password")} className={inputClass} />
+            </div>
+            {error && <p className="text-xs text-red-600">{error}</p>}
+            <button disabled={busy || registrationEnabled === null} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 transition-colors">
+              {busy ? "Création..." : "Créer mon compte"}
+            </button>
+          </form>
+          <p className="text-xs text-muted-foreground mt-4 text-center">
+            Déjà inscrit ? <Link to="/login" className="text-blue-600 font-medium">Se connecter</Link>
+          </p>
+        </>
+      )}
     </AuthLayout>
   );
 }

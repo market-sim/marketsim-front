@@ -6,7 +6,15 @@ import { BrandName, logoMark } from "../shared/brand";
 import { useAuth } from "../auth/AuthContext";
 import MarketTicker from "./MarketTicker";
 import ThemeToggle from "../theme/ThemeToggle";
-import { adminNavItem, navItems, pageTitles } from "./navConfig";
+import {
+  adminActivityNavItem,
+  adminLoginAnomaliesNavItem,
+  adminNavItem,
+  adminSettingsNavItem,
+  adminStatsNavItem,
+  navItems,
+  pageTitles,
+} from "./navConfig";
 import CoachDock from "../modules/coach/CoachDock";
 import { CoachProvider } from "../modules/coach/coachFocus";
 
@@ -18,7 +26,9 @@ export default function AppLayout() {
 
   const page = pageTitles[pathname] ?? pageTitles["/"];
   const initials = user ? `${user.firstName[0] ?? ""}${user.lastName[0] ?? ""}`.toUpperCase() : "?";
-  const systemItems = user?.role === "ADMIN" ? [adminNavItem] : [];
+  const systemItems = user?.role === "ADMIN"
+    ? [adminNavItem, adminStatsNavItem, adminSettingsNavItem, adminActivityNavItem, adminLoginAnomaliesNavItem]
+    : [];
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${isActive ? "bg-blue-600 text-white" : "text-white/55 hover:bg-white/10 hover:text-white"} ${collapsed ? "justify-center" : ""}`;
@@ -78,7 +88,7 @@ export default function AppLayout() {
           <ul className="space-y-0.5 mt-1">
             {systemItems.map(({ path, label, Icon }) => (
               <li key={path}>
-                <NavLink to={path} className={linkClass}>
+                <NavLink to={path} end={path === adminNavItem.path} className={linkClass}>
                   <Icon className="w-4 h-4 shrink-0" />
                   {!collapsed && <span>{label}</span>}
                 </NavLink>
@@ -94,7 +104,7 @@ export default function AppLayout() {
         </nav>
 
         <div className="border-t border-white/10 p-3">
-          <div className={`flex items-center gap-3 ${collapsed ? "justify-center" : ""}`}>
+          <NavLink to="/profile" className={`flex items-center gap-3 rounded-lg hover:bg-white/10 transition-colors ${collapsed ? "justify-center" : ""}`}>
             <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">{initials}</div>
             {!collapsed && user && (
               <div className="min-w-0">
@@ -102,7 +112,7 @@ export default function AppLayout() {
                 <div className="text-[11px] text-white/40">{user.role === "ADMIN" ? "Administrateur" : "Trader"} · {user.level}</div>
               </div>
             )}
-          </div>
+          </NavLink>
         </div>
       </aside>
 
