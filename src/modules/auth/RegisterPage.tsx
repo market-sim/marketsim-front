@@ -4,11 +4,14 @@ import { useAuth } from "../../auth/AuthContext";
 import { authApi } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
 import AuthLayout, { inputClass, labelClass } from "./AuthLayout";
+import PasswordField from "./PasswordField";
+import { passwordError } from "./userLogic";
 
 export default function RegisterPage() {
   const { user, register } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", password: "" });
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [registrationEnabled, setRegistrationEnabled] = useState<boolean | null>(null);
@@ -27,6 +30,8 @@ export default function RegisterPage() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    const problem = passwordError(form.password, confirmPassword);
+    if (problem) { setError(problem); return; }
     setBusy(true);
     setError("");
     try {
@@ -69,10 +74,10 @@ export default function RegisterPage() {
               <label className={labelClass}>Email</label>
               <input type="email" required value={form.email} onChange={set("email")} className={inputClass} />
             </div>
-            <div>
-              <label className={labelClass}>Mot de passe (6+ caractères)</label>
-              <input type="password" required minLength={6} value={form.password} onChange={set("password")} className={inputClass} />
-            </div>
+            <PasswordField label="Mot de passe (6+ caractères)" autoComplete="new-password" required showStrength
+              value={form.password} onChange={(v) => setForm((f) => ({ ...f, password: v }))} />
+            <PasswordField label="Confirmer le mot de passe" autoComplete="new-password" required
+              value={confirmPassword} onChange={setConfirmPassword} invalid={!!confirmPassword && confirmPassword !== form.password} />
             {error && <p className="text-xs text-red-600">{error}</p>}
             <button disabled={busy || registrationEnabled === null} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 transition-colors">
               {busy ? "Création..." : "Créer mon compte"}
