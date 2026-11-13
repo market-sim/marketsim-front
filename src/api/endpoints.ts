@@ -241,24 +241,177 @@ export interface LoginAnomalyQuery {
 }
 
 // ─── Module 2 : Trading & Gestion du Risque ──────────────────────────────────
+export type OrderSide = "BUY" | "SELL";
+export type OrderType = "MARKET" | "LIMIT" | "STOP";
+/** PENDING : LIMIT/STOP en attente ; OPEN : position ; CLOSED / CANCELLED / REJECTED : terminaux. */
+export type OrderStatus = "PENDING" | "OPEN" | "CLOSED" | "CANCELLED" | "REJECTED";
+export type CloseReason = "MANUAL" | "STOP_LOSS" | "TAKE_PROFIT" | "AGENT";
+
+/** Ticket renvoye par le serveur. `price` = prix de reference (execution, ou niveau si en attente). */
 export interface TradeOrder {
-  id?: number;
+  id: number;
   symbol: string;
-  side: "BUY" | "SELL";
-  orderType: "MARKET" | "LIMIT" | "STOP";
+  side: OrderSide;
+  positionType: "LONG" | "SHORT";
+  orderType: OrderType;
   quantity: number;
   price: number;
+  limitPrice?: number | null;
   stopLoss?: number | null;
   takeProfit?: number | null;
-  status?: "OPEN" | "CLOSED" | "CANCELLED";
+  status: OrderStatus;
   createdAt?: string;
+  executedPrice?: number | null;
+  executedAt?: string | null;
+  closedAt?: string | null;
+  closePrice?: number | null;
+  closeReason?: CloseReason | null;
+  realizedPnl?: number | null;
+  fees?: number | null;
+  rejectReason?: string | null;
+  /** Rempli pour un ticket OPEN uniquement. */
+  currentPrice?: number | null;
+  unrealizedPnl?: number | null;
+}
+
+/** Le client n'envoie jamais de prix d'execution : le serveur le lit lui-meme. */
+export interface CreateOrderRequest {
+  symbol: string;
+  side: OrderSide;
+  orderType: OrderType;
+  quantity: number;
+  /** Obligatoire pour LIMIT / STOP, interdit pour MARKET. */
+  limitPrice?: number | null;
+  stopLoss?: number | null;
+  takeProfit?: number | null;
+}
+
+/** Mise a jour partielle : champ absent = inchange ; clear* = effacement explicite. */
+export interface UpdateOrderRequest {
+  stopLoss?: number | null;
+  takeProfit?: number | null;
+  clearStopLoss?: boolean;
+  clearTakeProfit?: boolean;
+}
+
+export interface OrderFilters {
+  status?: OrderStatus;
+  symbol?: string;
+  from?: string; // yyyy-MM-dd
+  to?: string;
 }
 
 export const ordersApi = {
-  list: () => api.get<TradeOrder[]>("/trading/orders").then((r) => r.data),
-  create: (o: TradeOrder) => api.post<TradeOrder>("/trading/orders", o).then((r) => r.data),
-  update: (id: number, o: Partial<TradeOrder>) => api.put<TradeOrder>(`/trading/orders/${id}`, o).then((r) => r.data),
-  remove: (id: number) => api.delete(`/trading/orders/${id}`),
+  list: (filters?: OrderFilters) => api.get<TradeOrder[]>("/trading/orders", { params: filters }).then((r) => r.data),
+  get: (id: number) => api.get<TradeOrder>(`/trading/orders/${id}`).then((r) => r.data),
+  create: (o: CreateOrderRequest) => api.post<TradeOrder>("/trading/orders", o).then((r) => r.data),
+  update: (id: number, o: UpdateOrderRequest) => api.put<TradeOrder>(`/trading/orders/${id}`, o).then((r) => r.data),
+  close: (id: number) => api.post<TradeOrder>(`/trading/orders/${id}/close`).then((r) => r.data),
+  cancel: (id: number) => api.post<TradeOrder>(`/trading/orders/${id}/cancel`).then((r) => r.data),
+};
+
+export interface PortfolioPosition {
+  symbol: string;
+  netQuantity: number;
+  longQuantity: number;
+  shortQuantity: number;
+  avgEntryPrice: number;
+  marketPrice: number;
+  marketValue: number;
+  grossExposure: number;
+  unrealizedPnl: number;
+  weightPct: number;
+  tickets: number;
+}
+
+export interface Portfolio {
+  cash: number;
+  equity: number;
+  investedValue: number;
+  grossExposure: number;
+  netExposure: number;
+  unrealizedPnl: number;
+  realizedPnl: number;
+  totalFees: number;
+  totalReturnPct: number;
+  initialCapital: number;
+  openPositions: number;
+  pendingOrders: number;
+  positions: PortfolioPosition[];
+}
+
+export interface EquityPoint { at: string; equity: number; cash: number; event: string }
+
+export const portfolioApi = {
+  get: () => api.get<Portfolio>("/trading/portfolio").then((r) => r.data),
+  history: () => api.get<EquityPoint[]>("/trading/portfolio/history").then((r) => r.data),
+};
+
+export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "BLOCKED";
+
+export interface RiskCheck {
+  name: string;
+  passed: boolean;
+  /** true : regle dure (echec = ordre refuse) ; false : avertissement. */
+  blocking: boolean;
+  value: number | null;
+  limit: number | null;
+  message: string;
+}
+
+export interface RiskAssessment {
+  score: number;
+  level: RiskLevel;
+  checks: RiskCheck[];
+  metrics: {
+    referencePrice: number;
+    notional: number;
+    fee: number;
+    equity: number;
+    orderPctOfEquity: number;
+    concentrationAfterPct: number;
+    grossExposureAfterPct: number;
+    cashAfter: number;
+    cashAfterPct: number;
+    volatilityAnnualPct: number;
+    volatilitySource: "REAL" | "MODEL";
+    var95: number;
+  };
+  components: { concentration: number; orderSize: number; volatility: number; grossExposure: number; liquidity: number };
+}
+
+export interface RiskAssessRequest {
+  symbol: string;
+  side: OrderSide;
+  orderType: OrderType;
+  quantity: number;
+  limitPrice?: number | null;
+  stopLoss?: number | null;
+}
+
+export interface PortfolioRisk {
+  equity: number;
+  var95: number;
+  var99: number;
+  cvar95: number;
+  var95Pct: number;
+  varMethod: "HISTORICAL" | "PARAMETRIC" | "NONE";
+  observations: number;
+  grossExposure: number;
+  netExposure: number;
+  grossExposurePct: number;
+  netExposurePct: number;
+  hhi: number;
+  diversificationScore: number;
+  maxDrawdownPct: number | null;
+  currentDrawdownPct: number | null;
+  positions: number;
+  assumptions: string;
+}
+
+export const riskApi = {
+  assess: (req: RiskAssessRequest) => api.post<RiskAssessment>("/trading/risk/assess", req).then((r) => r.data),
+  portfolio: () => api.get<PortfolioRisk>("/trading/risk/portfolio").then((r) => r.data),
 };
 
 // ─── Module 3 : Analyse Financiere & Backtesting ─────────────────────────────

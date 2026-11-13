@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { assetsApi, type Asset } from "../../api/endpoints";
+import { assetsApi, portfolioApi, type Asset, type Portfolio } from "../../api/endpoints";
 import {
   ComposedChart,
   Area,
@@ -55,6 +55,10 @@ export default function DashboardPage() {
   // Module 5 : cotations venant du backend (GET /api/market/assets)
   const [assets, setAssets] = useState<Asset[]>([]);
   useEffect(() => { assetsApi.list().then(setAssets).catch(() => setAssets([])); }, []);
+  // Module 2 : portefeuille virtuel reel (GET /api/trading/portfolio)
+  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
+  useEffect(() => { portfolioApi.get().then(setPortfolio).catch(() => setPortfolio(null)); }, []);
+  const inProfit = portfolio?.positions.filter((p) => p.unrealizedPnl > 0).length ?? 0;
 
   const dashModules = [
     { id: 2, navId: "trading",    title: "Trading & Risk",      Icon: TrendingUp,   description: "Order execution, portfolio & Stop-loss AI",         iconBg: "bg-emerald-50", iconColor: "text-emerald-600" },
@@ -70,8 +74,11 @@ export default function DashboardPage() {
       {/* KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Virtual Portfolio", value: "$125,480", sub: "+$2,340 today (+1.9%)",  positive: true,  Icon: Wallet },
-          { label: "Open Positions",    value: "7",        sub: "3 positions in profit",   positive: true,  Icon: Target },
+          { label: "Virtual Portfolio", value: portfolio ? fmt(portfolio.equity) : "—",
+            sub: portfolio ? `${portfolio.totalReturnPct >= 0 ? "+" : ""}${portfolio.totalReturnPct}% since start · cash ${fmt(portfolio.cash)}` : "Portfolio unavailable",
+            positive: (portfolio?.totalReturnPct ?? 0) >= 0, Icon: Wallet },
+          { label: "Open Positions",    value: portfolio ? String(portfolio.openPositions) : "—",
+            sub: portfolio ? `${inProfit} position(s) in profit · ${portfolio.pendingOrders} pending` : "",   positive: true,  Icon: Target },
           { label: "Win Rate",          value: "64.3%",    sub: "Last 30 trading days",    positive: true,  Icon: Award  },
           { label: "AI Risk Score",     value: "23 / 100", sub: "Low exposure level",      positive: true,  Icon: Zap    },
         ].map(({ label, value, sub, positive, Icon }) => (
