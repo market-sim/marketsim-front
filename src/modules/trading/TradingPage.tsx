@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { Ban, X } from "lucide-react";
+import { Ban, Bot, Pencil, X } from "lucide-react";
 import { fmt, MONO, DISPLAY, CardShell } from "../../shared/ui";
 import {
   assetsApi, ordersApi, portfolioApi, riskApi,
-  type Asset, type OrderSide, type OrderType, type Portfolio, type PortfolioRisk, type RiskAssessment, type TradeOrder,
+  type Asset, type EquityPoint, type OrderSide, type OrderType, type Portfolio, type PortfolioRisk, type RiskAssessment,
+  type TradeOrder, type UpdateOrderRequest,
 } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
-import { buildOrderRequest, buildRiskRequest, historyReason, riskStyle, signed, splitOrders, type OrderForm } from "./tradingLogic";
+import {
+  buildOrderRequest, buildRiskRequest, distancePct, filterHistory, formatDistance, historyReason, riskStyle, signed, splitOrders,
+  type HistoryFilter, type OrderForm,
+} from "./tradingLogic";
+import { CloseConfirmDialog, EditProtectionDialog } from "./components/TradeDialogs";
+import { EquityCurve, OrderPreview, PositionsBySymbol } from "./components/PortfolioPanels";
 
 const inputClass = "w-full bg-muted/30 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none focus:border-blue-400";
 const labelClass = "text-[11px] font-medium text-muted-foreground uppercase tracking-wide block mb-1";
@@ -42,16 +48,22 @@ export default function TradingPage() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<Tab>("open");
+  const [history, setHistory] = useState<EquityPoint[]>([]);
+  const [editing, setEditing] = useState<TradeOrder | null>(null);
+  const [closing, setClosing] = useState<TradeOrder | null>(null);
+  const [openView, setOpenView] = useState<"tickets" | "symbols">("tickets");
+  const [filter, setFilter] = useState<HistoryFilter>({ status: "", symbol: "", from: "", to: "" });
 
   const set = <K extends keyof OrderForm>(key: K, value: OrderForm[K]) => setForm((f) => ({ ...f, [key]: value }));
 
   const refresh = useCallback(async () => {
     try {
       // GET /orders et /portfolio declenchent aussi un balayage SL/TP/LIMIT cote serveur
-      const [o, p, r] = await Promise.all([ordersApi.list(), portfolioApi.get(), riskApi.portfolio()]);
+      const [o, p, r, h] = await Promise.all([ordersApi.list(), portfolioApi.get(), riskApi.portfolio(), portfolioApi.history()]);
       setOrders(o);
       setPortfolio(p);
       setPRisk(r);
+      setHistory(h);
     } catch (e) {
       setError(apiError(e));
     }
@@ -123,7 +135,26 @@ export default function TradingPage() {
     }
   };
 
-  const { open, pending, history } = splitOrders(orders);
+  /** PUT partiel ; renvoie le message d'erreur (affiche dans la boite de dialogue) ou null. */
+  const saveProtection = async (id: number, req: UpdateOrderRequest): Promise<string | null> => {
+    try {
+      await ordersApi.update(id, req);
+      setNotice(`Protections de l'ordre #${id} mises à jour`);
+      refresh();
+      return null;
+    } catch (e) {
+      return apiError(e);
+    }
+  };
+
+  const priceOf = (symbol: string) => {
+    const a = assets.find((x) => x.symbol === symbol);
+    return a ? Number(a.price) : null;
+  };
+
+  const { open, pending, history: done } = splitOrders(orders);
+  const filteredHistory = filterHistory(done, filter);
+  const historySymbols = Array.from(new Set(done.map((o) => o.symbol))).sort();
   const stats = [
     { label: "Equity", value: portfolio ? fmt(portfolio.equity) : "—", sub: portfolio ? `${portfolio.totalReturnPct >= 0 ? "+" : ""}${portfolio.totalReturnPct}% depuis le départ` : "", positive: (portfolio?.totalReturnPct ?? 0) >= 0 },
     { label: "Solde disponible", value: portfolio ? fmt(portfolio.cash) : "—", sub: portfolio ? `${portfolio.openPositions} position(s), ${portfolio.pendingOrders} en attente` : "", positive: true },
@@ -200,11 +231,7 @@ export default function TradingPage() {
               <div className="h-1.5 bg-muted rounded-full">
                 <div className={`h-1.5 rounded-full transition-all ${style.bar}`} style={{ width: `${risk ? Math.max(3, risk.score) : 0}%` }} />
               </div>
-              {risk && (
-                <p className="text-[10px] text-muted-foreground mt-1" style={MONO}>
-                  {fmt(risk.metrics.notional)} · {risk.metrics.orderPctOfEquity}% de l'equity · VaR95 {fmt(risk.metrics.var95)} · σ {risk.metrics.volatilityAnnualPct}% ({risk.metrics.volatilitySource === "REAL" ? "réelle" : "modèle"})
-                </p>
-              )}
+              {risk && <OrderPreview risk={risk} />}
               {failed.length > 0 && (
                 <ul className="mt-2 space-y-1">
                   {failed.map((c) => (
@@ -247,23 +274,33 @@ export default function TradingPage() {
               </div>
             </CardShell>
           )}
+          <EquityCurve history={history} portfolio={portfolio} />
         </div>
       </div>
 
       {/* Onglets : positions / en attente / historique */}
       <CardShell className="overflow-hidden">
         <div className="flex items-center gap-1 px-5 pt-3 border-b border-border/60">
-          {([["open", `Positions ouvertes (${open.length})`], ["pending", `Ordres en attente (${pending.length})`], ["history", `Historique (${history.length})`]] as [Tab, string][]).map(([key, label]) => (
+          {([["open", `Positions ouvertes (${open.length})`], ["pending", `Ordres en attente (${pending.length})`], ["history", `Historique (${done.length})`]] as [Tab, string][]).map(([key, label]) => (
             <button key={key} onClick={() => setTab(key)}
               className={`px-3 py-2 text-xs font-semibold border-b-2 -mb-px transition-colors ${tab === key ? "border-blue-500 text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
               style={DISPLAY}>
               {label}
             </button>
           ))}
+          {tab === "open" && (
+            <div className="ml-auto mb-2 flex rounded-md border border-border overflow-hidden text-[11px]">
+              {([["tickets", "Par ticket"], ["symbols", "Par actif"]] as const).map(([v, l]) => (
+                <button key={v} onClick={() => setOpenView(v)}
+                  className={`px-2.5 py-1 font-semibold ${openView === v ? "bg-blue-500 text-white" : "text-muted-foreground hover:bg-muted/50"}`}>{l}</button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="overflow-x-auto">
-          {tab === "open" && (
-            <table className="w-full min-w-[760px]">
+          {tab === "open" && openView === "symbols" && <PositionsBySymbol portfolio={portfolio} />}
+          {tab === "open" && openView === "tickets" && (
+            <table className="w-full min-w-[860px]">
               <thead>
                 <tr className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground bg-muted/20">
                   <th className="text-left px-5 py-3">Actif</th><th className="text-center px-4 py-3">Sens</th>
@@ -277,16 +314,17 @@ export default function TradingPage() {
                   const pnl = Number(o.unrealizedPnl ?? 0);
                   return (
                     <tr key={o.id} className="hover:bg-muted/10 transition-colors">
-                      <SymbolCell symbol={o.symbol} id={o.id} />
+                      <SymbolCell o={o} />
                       <td className="px-4 py-3.5 text-center"><SideBadge o={o} /></td>
                       <td className={`${tdNum} text-foreground`} style={MONO}>{Number(o.quantity)}</td>
                       <td className={`${tdNum} text-muted-foreground`} style={MONO}>{num(o.executedPrice ?? o.price)}</td>
                       <td className={`${tdNum} text-foreground`} style={MONO}>{num(o.currentPrice)}</td>
                       <td className={`${tdNum} font-medium ${pnlClass(pnl)}`} style={MONO}>{signed(pnl, fmt)}</td>
-                      <td className="px-4 py-3.5 text-right text-[11px] text-red-500" style={MONO}>{num(o.stopLoss)}</td>
-                      <td className="px-4 py-3.5 text-right text-[11px] text-emerald-600" style={MONO}>{num(o.takeProfit)}</td>
-                      <td className="px-5 py-3.5 text-right">
-                        <button onClick={() => act(() => ordersApi.close(o.id), "Clôture")} title="Clôturer au prix du marché"
+                      <LevelCell value={o.stopLoss} price={o.currentPrice} tone="text-red-500" />
+                      <LevelCell value={o.takeProfit} price={o.currentPrice} tone="text-emerald-600" />
+                      <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                        <EditButton onClick={() => setEditing(o)} />
+                        <button onClick={() => setClosing(o)} title="Clôturer au prix du marché"
                           className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-md border border-border text-foreground hover:bg-muted/50">
                           <X className="w-3 h-3" /> Clôturer
                         </button>
@@ -303,21 +341,22 @@ export default function TradingPage() {
               <thead>
                 <tr className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground bg-muted/20">
                   <th className="text-left px-5 py-3">Actif</th><th className="text-center px-4 py-3">Sens</th><th className="text-center px-4 py-3">Type</th>
-                  <th className={thClass}>Qté</th><th className={thClass}>Niveau</th><th className={thClass}>Stop-Loss</th><th className={thClass}>Take-Profit</th><th className="px-5 py-3" />
+                  <th className={thClass}>Qté</th><th className={thClass}>Niveau / écart</th><th className={thClass}>Stop-Loss</th><th className={thClass}>Take-Profit</th><th className="px-5 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
                 {pending.length === 0 && <EmptyRow cols={8} text="Aucun ordre LIMIT / STOP en attente." />}
                 {pending.map((o) => (
                   <tr key={o.id} className="hover:bg-muted/10 transition-colors">
-                    <SymbolCell symbol={o.symbol} id={o.id} />
+                    <SymbolCell o={o} />
                     <td className="px-4 py-3.5 text-center"><SideBadge o={o} /></td>
                     <td className="px-4 py-3.5 text-center text-[11px] font-semibold text-muted-foreground">{o.orderType}</td>
                     <td className={`${tdNum} text-foreground`} style={MONO}>{Number(o.quantity)}</td>
-                    <td className={`${tdNum} text-foreground`} style={MONO}>{num(o.limitPrice)}</td>
+                    <LevelCell value={o.limitPrice} price={priceOf(o.symbol)} tone="text-foreground" label="du cours" />
                     <td className="px-4 py-3.5 text-right text-[11px] text-red-500" style={MONO}>{num(o.stopLoss)}</td>
                     <td className="px-4 py-3.5 text-right text-[11px] text-emerald-600" style={MONO}>{num(o.takeProfit)}</td>
-                    <td className="px-5 py-3.5 text-right">
+                    <td className="px-5 py-3.5 text-right whitespace-nowrap">
+                      <EditButton onClick={() => setEditing(o)} />
                       <button onClick={() => act(() => ordersApi.cancel(o.id), "Annulation")} title="Annuler l'ordre"
                         className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-md border border-border text-red-600 hover:bg-red-50">
                         <Ban className="w-3 h-3" /> Annuler
@@ -330,6 +369,26 @@ export default function TradingPage() {
           )}
 
           {tab === "history" && (
+            <div className="flex flex-wrap items-end gap-3 px-5 py-3 border-b border-border/40">
+              <FilterField label="Statut">
+                <select value={filter.status} onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value as HistoryFilter["status"] }))} className={filterClass}>
+                  <option value="">Tous</option><option value="CLOSED">Clôturés</option><option value="CANCELLED">Annulés</option><option value="REJECTED">Refusés</option>
+                </select>
+              </FilterField>
+              <FilterField label="Actif">
+                <select value={filter.symbol} onChange={(e) => setFilter((f) => ({ ...f, symbol: e.target.value }))} className={filterClass}>
+                  <option value="">Tous</option>{historySymbols.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </FilterField>
+              <FilterField label="Du"><input type="date" value={filter.from} onChange={(e) => setFilter((f) => ({ ...f, from: e.target.value }))} className={filterClass} /></FilterField>
+              <FilterField label="Au"><input type="date" value={filter.to} onChange={(e) => setFilter((f) => ({ ...f, to: e.target.value }))} className={filterClass} /></FilterField>
+              {(filter.status || filter.symbol || filter.from || filter.to) && (
+                <button onClick={() => setFilter({ status: "", symbol: "", from: "", to: "" })} className="text-[11px] font-semibold text-blue-600 hover:underline pb-2">Réinitialiser</button>
+              )}
+              <span className="ml-auto text-[11px] text-muted-foreground pb-2">{filteredHistory.length} / {done.length} ordre(s)</span>
+            </div>
+          )}
+          {tab === "history" && (
             <table className="w-full min-w-[1000px]">
               <thead>
                 <tr className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground bg-muted/20">
@@ -339,12 +398,12 @@ export default function TradingPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
-                {history.length === 0 && <EmptyRow cols={9} text="Aucun ordre terminé." />}
-                {history.map((o) => {
+                {filteredHistory.length === 0 && <EmptyRow cols={9} text={done.length ? "Aucun ordre ne correspond aux filtres." : "Aucun ordre terminé."} />}
+                {filteredHistory.map((o) => {
                   const pnl = Number(o.realizedPnl ?? 0);
                   return (
                     <tr key={o.id} className="hover:bg-muted/10 transition-colors">
-                      <SymbolCell symbol={o.symbol} id={o.id} />
+                      <SymbolCell o={o} />
                       <td className="px-4 py-3.5 text-center"><SideBadge o={o} /></td>
                       <td className="px-4 py-3.5 text-center"><StatusBadge status={o.status} /></td>
                       <td className={`${tdNum} text-foreground`} style={MONO}>{Number(o.quantity)}</td>
@@ -363,6 +422,10 @@ export default function TradingPage() {
           )}
         </div>
       </CardShell>
+
+      <EditProtectionDialog order={editing} onClose={() => setEditing(null)} onSave={saveProtection} />
+      <CloseConfirmDialog order={closing} onClose={() => setClosing(null)}
+        onConfirm={(id) => act(() => ordersApi.close(id), "Clôture")} />
     </div>
   );
 }
@@ -371,19 +434,54 @@ function EmptyRow({ cols, text }: { cols: number; text: string }) {
   return <tr><td colSpan={cols} className="px-5 py-6 text-center text-xs text-muted-foreground">{text}</td></tr>;
 }
 
-function SymbolCell({ symbol, id }: { symbol: string; id: number }) {
+const filterClass = "bg-muted/30 border border-border rounded-md px-2 py-1.5 text-xs text-foreground outline-none focus:border-blue-400";
+
+function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
+  return <label className="block"><span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide block mb-1">{label}</span>{children}</label>;
+}
+
+function SymbolCell({ o }: { o: TradeOrder }) {
+  const agent = o.source === "AGENT" || o.closeReason === "AGENT";
   return (
     <td className="px-5 py-3.5">
       <div className="flex items-center gap-2">
         <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-          <span className="text-[9px] font-bold text-blue-700">{symbol.slice(0, 2)}</span>
+          <span className="text-[9px] font-bold text-blue-700">{o.symbol.slice(0, 2)}</span>
         </div>
         <div>
-          <span className="text-sm font-medium text-foreground block">{symbol}</span>
-          <span className="text-[10px] text-muted-foreground" style={MONO}>#{id}</span>
+          <span className="text-sm font-medium text-foreground block">{o.symbol}</span>
+          <span className="text-[10px] text-muted-foreground inline-flex items-center gap-1.5" style={MONO}>
+            #{o.id}
+            {agent && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 rounded-full bg-violet-50 text-violet-700 font-semibold"
+                title={o.source === "AGENT" ? "Ordre passé par l'agent IA" : "Clôturé par l'agent IA"}>
+                <Bot className="w-2.5 h-2.5" /> Agent
+              </span>
+            )}
+          </span>
         </div>
       </div>
     </td>
+  );
+}
+
+/** Niveau (SL, TP, limite) et son ecart en % au cours actuel. */
+function LevelCell({ value, price, tone, label = "" }: { value: number | null | undefined; price: number | null | undefined; tone: string; label?: string }) {
+  const d = formatDistance(distancePct(value, price));
+  return (
+    <td className={`px-4 py-3.5 text-right text-[11px] ${tone}`} style={MONO}>
+      {num(value)}
+      {value != null && d && <span className="block text-[10px] text-muted-foreground">{d}{label ? ` ${label}` : ""}</span>}
+    </td>
+  );
+}
+
+function EditButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button onClick={onClick} title="Modifier stop-loss / take-profit"
+      className="inline-flex items-center justify-center w-7 h-7 mr-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 align-middle">
+      <Pencil className="w-3 h-3" />
+    </button>
   );
 }
 

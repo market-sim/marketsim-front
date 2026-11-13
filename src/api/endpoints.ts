@@ -272,6 +272,8 @@ export interface TradeOrder {
   /** Rempli pour un ticket OPEN uniquement. */
   currentPrice?: number | null;
   unrealizedPnl?: number | null;
+  /** Qui a passe l'ordre : l'utilisateur ou l'agent IA (module 6). */
+  source?: "USER" | "AGENT";
 }
 
 /** Le client n'envoie jamais de prix d'execution : le serveur le lit lui-meme. */

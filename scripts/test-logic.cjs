@@ -192,3 +192,47 @@ console.log("mode debutant : tous les tests passent");
   assert.strictEqual(t.signed(-0.001, f), "0.00");
   console.log("module 2 trading : tous les tests passent");
 }
+
+// ======================= Module 2 : ameliorations (lots 1 et 2) =======================
+{
+  const t = require(path.join(OUT, "tradingLogic.js"));
+  // distance au declenchement
+  near(t.distancePct(95, 100), -5, 1e-9, "SL 5 % sous le prix");
+  assert.strictEqual(t.distancePct(null, 100), null);
+  assert.strictEqual(t.formatDistance(t.distancePct(103.2, 100)), "+3.20 %");
+  assert.strictEqual(t.formatDistance(null), "");
+
+  // estimation de cloture (LONG et SHORT), memes regles que le serveur
+  const long = { status: "OPEN", side: "BUY", quantity: 10, price: 192.45, executedPrice: 192.45, currentPrice: 200 };
+  assert.deepStrictEqual(t.estimateClose(long), { pnl: 75.5, closeFee: 2, net: 73.5 });
+  const short = { ...long, side: "SELL", currentPrice: 180 };
+  assert.deepStrictEqual(t.estimateClose(short), { pnl: 124.5, closeFee: 1.8, net: 122.7 });
+  assert.strictEqual(t.estimateClose({ ...long, status: "CLOSED" }), null);
+
+  // filtres de l'historique
+  const h = [
+    { id: 1, status: "CLOSED", symbol: "AAPL", createdAt: "2026-11-01T09:00:00" },
+    { id: 2, status: "REJECTED", symbol: "BTC/USD", createdAt: "2026-11-05T09:00:00" },
+    { id: 3, status: "CANCELLED", symbol: "AAPL", createdAt: "2026-11-10T23:59:00" },
+  ];
+  const ids = (f) => t.filterHistory(h, { status: "", symbol: "", from: "", to: "", ...f }).map((o) => o.id);
+  assert.deepStrictEqual(ids({}), [1, 2, 3]);
+  assert.deepStrictEqual(ids({ symbol: "AAPL" }), [1, 3]);
+  assert.deepStrictEqual(ids({ status: "REJECTED" }), [2]);
+  assert.deepStrictEqual(ids({ from: "2026-11-05", to: "2026-11-10" }), [2, 3], "bornes incluses");
+
+  // decomposition du score : somme des points ~ score serveur
+  const parts = t.riskBreakdown({ concentration: 0.588, orderSize: 0.941, volatility: 0.875, grossExposure: 0.635, liquidity: 0.636 });
+  near(parts.reduce((s, p) => s + p.points, 0), 75, 0.6, "score reconstruit");
+  assert.strictEqual(parts[0].label, "Concentration");
+  assert.deepStrictEqual(t.riskBreakdown(null), []);
+
+  // mise a jour partielle SL/TP
+  const o = { stopLoss: 180, takeProfit: 215 };
+  assert.deepStrictEqual(t.buildProtectionUpdate(o, "185", "215").request, { stopLoss: 185 }, "seul le champ modifie part");
+  assert.deepStrictEqual(t.buildProtectionUpdate(o, "", "215").request, { clearStopLoss: true }, "champ vide = effacement");
+  assert.deepStrictEqual(t.buildProtectionUpdate({ stopLoss: null, takeProfit: null }, "", "250").request, { takeProfit: 250 });
+  assert.ok(t.buildProtectionUpdate(o, "180", "215").error, "aucune modification");
+  assert.ok(t.buildProtectionUpdate(o, "-1", "").error);
+  console.log("module 2 ameliorations : tous les tests passent");
+}

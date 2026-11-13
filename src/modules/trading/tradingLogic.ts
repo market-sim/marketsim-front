@@ -1,5 +1,5 @@
 // Logique pure du module 2 (sans React) : testee par scripts/test-logic.cjs.
-import type { CreateOrderRequest, OrderSide, OrderType, RiskAssessRequest, RiskLevel, TradeOrder } from "../../api/endpoints";
+import type { CreateOrderRequest, OrderSide, OrderStatus, OrderType, RiskAssessRequest, RiskAssessment, RiskLevel, TradeOrder, UpdateOrderRequest } from "../../api/endpoints";
 
 export interface OrderForm {
   symbol: string;
@@ -86,4 +86,83 @@ export function historyReason(o: TradeOrder): string {
 export function signed(v: number, format: (n: number) => string): string {
   const n = Math.abs(v) < 0.005 ? 0 : v;
   return `${n > 0 ? "+" : n < 0 ? "-" : ""}${format(Math.abs(n))}`;
+}
+
+/** Frais par transaction (doit rester egal a trading.fee-rate cote serveur ; sert uniquement aux estimations). */
+export const FEE_RATE = 0.001;
+
+/** Ecart en % entre un niveau (SL, TP, limite) et le prix courant : negatif = niveau sous le prix. */
+export function distancePct(level: number | null | undefined, price: number | null | undefined): number | null {
+  if (level == null || price == null || !(Number(price) > 0)) return null;
+  return (Number(level) / Number(price) - 1) * 100;
+}
+
+/** "-3.20 %" / "+1.05 %" (2 decimales), ou "" si non calculable. */
+export function formatDistance(d: number | null): string {
+  if (d == null || !Number.isFinite(d)) return "";
+  const v = Math.abs(d) < 0.005 ? 0 : d;
+  return `${v > 0 ? "+" : ""}${v.toFixed(2)} %`;
+}
+
+/** Estimation de la cloture d'un ticket OPEN au prix courant (le prix reel est fixe par le serveur). */
+export function estimateClose(o: TradeOrder, feeRate = FEE_RATE): { pnl: number; closeFee: number; net: number } | null {
+  if (o.status !== "OPEN" || o.currentPrice == null) return null;
+  const qty = Number(o.quantity);
+  const entry = Number(o.executedPrice ?? o.price);
+  const exit = Number(o.currentPrice);
+  const round2 = (v: number) => Math.round(v * 100) / 100;
+  const pnl = round2((o.side === "BUY" ? exit - entry : entry - exit) * qty);
+  const closeFee = round2(qty * exit * feeRate);
+  return { pnl, closeFee, net: round2(pnl - closeFee) };
+}
+
+export interface HistoryFilter { status: "" | OrderStatus; symbol: string; from: string; to: string }
+
+/** Filtre de l'historique (dates yyyy-MM-dd incluses, sur la date de creation, comme l'API). */
+export function filterHistory(orders: TradeOrder[], f: HistoryFilter): TradeOrder[] {
+  return orders.filter((o) => {
+    if (f.status && o.status !== f.status) return false;
+    if (f.symbol && o.symbol !== f.symbol) return false;
+    const day = (o.createdAt ?? "").slice(0, 10);
+    if (f.from && (!day || day < f.from)) return false;
+    if (f.to && (!day || day > f.to)) return false;
+    return true;
+  });
+}
+
+/** Contribution de chaque composante au score (memes poids que RiskCalculator cote serveur). */
+export const RISK_WEIGHTS = [
+  { key: "concentration", label: "Concentration", weight: 30 },
+  { key: "orderSize", label: "Taille de l'ordre", weight: 25 },
+  { key: "volatility", label: "Volatilité", weight: 20 },
+  { key: "grossExposure", label: "Exposition brute", weight: 15 },
+  { key: "liquidity", label: "Liquidité restante", weight: 10 },
+] as const;
+
+export function riskBreakdown(components: RiskAssessment["components"] | null | undefined) {
+  if (!components) return [];
+  return RISK_WEIGHTS.map(({ key, label, weight }) => {
+    const ratio = Math.max(0, Math.min(1, Number(components[key]) || 0));
+    return { key, label, weight, ratio, points: Math.round(ratio * weight * 10) / 10 };
+  });
+}
+
+/**
+ * Requete PUT partielle a partir des champs SL/TP saisis. Champ vide alors qu'un niveau existait = effacement
+ * explicite ; valeur identique = rien a envoyer pour ce champ.
+ */
+export function buildProtectionUpdate(o: Pick<TradeOrder, "stopLoss" | "takeProfit">, sl: string, tp: string): { request?: UpdateOrderRequest; error?: string } {
+  const req: UpdateOrderRequest = {};
+  const pairs: [string, number | null | undefined, "stopLoss" | "takeProfit", "clearStopLoss" | "clearTakeProfit", string][] = [
+    [sl, o.stopLoss, "stopLoss", "clearStopLoss", "Stop-loss"],
+    [tp, o.takeProfit, "takeProfit", "clearTakeProfit", "Take-profit"],
+  ];
+  for (const [raw, current, field, clear, label] of pairs) {
+    const v = parseOptional(raw);
+    if (v === undefined || (v != null && v <= 0)) return { error: `${label} invalide` };
+    if (v == null) { if (current != null) req[clear] = true; }
+    else if (current == null || Number(current) !== v) req[field] = v;
+  }
+  if (Object.keys(req).length === 0) return { error: "Aucune modification" };
+  return { request: req };
 }
