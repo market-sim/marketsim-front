@@ -137,3 +137,102 @@ near(maxDrawdown([100, 120, 90, 110]), 90 / 120 - 1, 1e-12, "drawdown");
 near(maxDrawdown([100, 101, 102]), 0, 1e-12, "pas de baisse");
 
 console.log("mode debutant : tous les tests passent");
+
+// ======================= Module 2 : logique du formulaire de trading =======================
+{
+  const src = path.join(FRONT, "src/modules/trading/tradingLogic.ts");
+  const js = ts.transpileModule(fs.readFileSync(src, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+  fs.writeFileSync(path.join(OUT, "tradingLogic.js"), js);
+  const t = require(path.join(OUT, "tradingLogic.js"));
+  const form = { symbol: "AAPL", side: "BUY", orderType: "MARKET", quantity: "10", limitPrice: "999", stopLoss: "", takeProfit: "" };
+
+  // MARKET : jamais de prix envoye (ni price, ni limitPrice)
+  const m = t.buildOrderRequest(form).request;
+  assert.ok(m && !("price" in m) && !("limitPrice" in m), "MARKET sans prix");
+  assert.strictEqual(m.quantity, 10);
+  assert.strictEqual(m.stopLoss, null);
+
+  // LIMIT / STOP : prix limite obligatoire, virgule francaise acceptee
+  assert.ok(t.buildOrderRequest({ ...form, orderType: "LIMIT", limitPrice: "" }).error, "LIMIT sans niveau refuse");
+  assert.strictEqual(t.buildOrderRequest({ ...form, orderType: "STOP", limitPrice: "150,5" }).request.limitPrice, 150.5);
+
+  // saisies invalides
+  assert.ok(t.buildOrderRequest({ ...form, quantity: "0" }).error);
+  assert.ok(t.buildOrderRequest({ ...form, quantity: "abc" }).error);
+  assert.ok(t.buildOrderRequest({ ...form, stopLoss: "-3" }).error);
+  assert.ok(t.buildOrderRequest({ ...form, symbol: "" }).error);
+  assert.strictEqual(t.buildRiskRequest({ ...form, quantity: "" }), null, "pas de simulation de risque sur un formulaire incomplet");
+  assert.deepStrictEqual(t.buildRiskRequest({ ...form, stopLoss: "180" }),
+    { symbol: "AAPL", side: "BUY", orderType: "MARKET", quantity: 10, limitPrice: null, stopLoss: 180 });
+
+  // niveaux de risque
+  assert.strictEqual(t.riskStyle("BLOCKED").label, "Ordre bloqué");
+  assert.ok(t.riskStyle("LOW").bar.includes("emerald"));
+  assert.strictEqual(t.riskStyle(undefined).label, "—");
+
+  // repartition des onglets et historique trie (plus recent d'abord)
+  const orders = [
+    { id: 1, status: "OPEN" }, { id: 2, status: "PENDING" },
+    { id: 3, status: "CLOSED", closedAt: "2026-11-01T10:00:00", closeReason: "STOP_LOSS" },
+    { id: 4, status: "REJECTED", createdAt: "2026-11-02T10:00:00", rejectReason: "Solde insuffisant" },
+    { id: 5, status: "CANCELLED", createdAt: "2026-10-01T10:00:00" },
+  ];
+  const s = t.splitOrders(orders);
+  assert.deepStrictEqual(s.open.map((o) => o.id), [1]);
+  assert.deepStrictEqual(s.pending.map((o) => o.id), [2]);
+  assert.deepStrictEqual(s.history.map((o) => o.id), [4, 3, 5]);
+  assert.strictEqual(t.historyReason(orders[2]), "Stop-loss");
+  assert.strictEqual(t.historyReason(orders[3]), "Solde insuffisant");
+  assert.strictEqual(t.historyReason(orders[4]), "Annulé");
+
+  // signe explicite, pas de "-0"
+  const f = (n) => n.toFixed(2);
+  assert.strictEqual(t.signed(75.5, f), "+75.50");
+  assert.strictEqual(t.signed(-53.2, f), "-53.20");
+  assert.strictEqual(t.signed(-0.001, f), "0.00");
+  console.log("module 2 trading : tous les tests passent");
+}
+
+// ======================= Module 2 : ameliorations (lots 1 et 2) =======================
+{
+  const t = require(path.join(OUT, "tradingLogic.js"));
+  // distance au declenchement
+  near(t.distancePct(95, 100), -5, 1e-9, "SL 5 % sous le prix");
+  assert.strictEqual(t.distancePct(null, 100), null);
+  assert.strictEqual(t.formatDistance(t.distancePct(103.2, 100)), "+3.20 %");
+  assert.strictEqual(t.formatDistance(null), "");
+
+  // estimation de cloture (LONG et SHORT), memes regles que le serveur
+  const long = { status: "OPEN", side: "BUY", quantity: 10, price: 192.45, executedPrice: 192.45, currentPrice: 200 };
+  assert.deepStrictEqual(t.estimateClose(long), { pnl: 75.5, closeFee: 2, net: 73.5 });
+  const short = { ...long, side: "SELL", currentPrice: 180 };
+  assert.deepStrictEqual(t.estimateClose(short), { pnl: 124.5, closeFee: 1.8, net: 122.7 });
+  assert.strictEqual(t.estimateClose({ ...long, status: "CLOSED" }), null);
+
+  // filtres de l'historique
+  const h = [
+    { id: 1, status: "CLOSED", symbol: "AAPL", createdAt: "2026-11-01T09:00:00" },
+    { id: 2, status: "REJECTED", symbol: "BTC/USD", createdAt: "2026-11-05T09:00:00" },
+    { id: 3, status: "CANCELLED", symbol: "AAPL", createdAt: "2026-11-10T23:59:00" },
+  ];
+  const ids = (f) => t.filterHistory(h, { status: "", symbol: "", from: "", to: "", ...f }).map((o) => o.id);
+  assert.deepStrictEqual(ids({}), [1, 2, 3]);
+  assert.deepStrictEqual(ids({ symbol: "AAPL" }), [1, 3]);
+  assert.deepStrictEqual(ids({ status: "REJECTED" }), [2]);
+  assert.deepStrictEqual(ids({ from: "2026-11-05", to: "2026-11-10" }), [2, 3], "bornes incluses");
+
+  // decomposition du score : somme des points ~ score serveur
+  const parts = t.riskBreakdown({ concentration: 0.588, orderSize: 0.941, volatility: 0.875, grossExposure: 0.635, liquidity: 0.636 });
+  near(parts.reduce((s, p) => s + p.points, 0), 75, 0.6, "score reconstruit");
+  assert.strictEqual(parts[0].label, "Concentration");
+  assert.deepStrictEqual(t.riskBreakdown(null), []);
+
+  // mise a jour partielle SL/TP
+  const o = { stopLoss: 180, takeProfit: 215 };
+  assert.deepStrictEqual(t.buildProtectionUpdate(o, "185", "215").request, { stopLoss: 185 }, "seul le champ modifie part");
+  assert.deepStrictEqual(t.buildProtectionUpdate(o, "", "215").request, { clearStopLoss: true }, "champ vide = effacement");
+  assert.deepStrictEqual(t.buildProtectionUpdate({ stopLoss: null, takeProfit: null }, "", "250").request, { takeProfit: 250 });
+  assert.ok(t.buildProtectionUpdate(o, "180", "215").error, "aucune modification");
+  assert.ok(t.buildProtectionUpdate(o, "-1", "").error);
+  console.log("module 2 ameliorations : tous les tests passent");
+}

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Layers, Play } from "lucide-react";
-import { portfolioApi, type AgentConfig, type PortfolioResult } from "../../../api/endpoints";
+import { agentPortfolioApi, type AgentConfig, type PortfolioResult } from "../../../api/endpoints";
 import { errorMessage } from "../../../api/client";
 import { CardShell, DISPLAY, MONO } from "../../../shared/ui";
 import { inputClass, labelClass } from "../format";
@@ -25,7 +25,7 @@ export default function PortfolioPanel({ agent }: { agent: AgentConfig }) {
     setBusy(true);
     setError("");
     try {
-      setResult(await portfolioApi.run(agent.id!, { days, capital, realData, weights }));
+      setResult(await agentPortfolioApi.run(agent.id!, { days, capital, realData, weights }));
     } catch (e) {
       setError(errorMessage(e));
     } finally {

@@ -3,7 +3,7 @@ import { RefreshCw } from "lucide-react";
 import { api } from "../api/client";
 
 /** Version de l'API attendue par ce frontend (doit egaler VersionController.API_LEVEL cote serveur). */
-export const EXPECTED_API_LEVEL = 8;
+export const EXPECTED_API_LEVEL = 9;
 
 /**
  * Bandeau affiche quand le serveur qui tourne est plus ancien que le frontend (les nouvelles pages

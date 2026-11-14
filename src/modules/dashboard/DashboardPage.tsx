@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { assetsApi, type Asset } from "../../api/endpoints";
+import { assetsApi, portfolioApi, type Asset, type Portfolio } from "../../api/endpoints";
 import {
   ComposedChart,
   Area,
@@ -49,12 +49,19 @@ import {
 import { fmt, pct, priceDisplay, MONO, DISPLAY, SignalBadge, SectionHeader, CardShell } from "../../shared/ui";
 import type { Signal, Sentiment, Direction, BankStatus } from "../../shared/ui";
 import DashboardTop from "./DashboardTop";
+import { useAuth } from "../../auth/AuthContext";
 
 export default function DashboardPage() {
   const navigate = useNavigate();
   // Module 5 : cotations venant du backend (GET /api/market/assets)
   const [assets, setAssets] = useState<Asset[]>([]);
   useEffect(() => { assetsApi.list().then(setAssets).catch(() => setAssets([])); }, []);
+  // Module 2 : portefeuille virtuel reel (GET /api/trading/portfolio)
+  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
+  // (pas pour l'admin : il n'a ni portefeuille ni score)
+  const isAdmin = useAuth().user?.role === "ADMIN";
+  useEffect(() => { if (!isAdmin) portfolioApi.get().then(setPortfolio).catch(() => setPortfolio(null)); }, [isAdmin]);
+  const inProfit = portfolio?.positions.filter((p) => p.unrealizedPnl > 0).length ?? 0;
 
   const dashModules = [
     { id: 2, navId: "trading",    title: "Trading & Risk",      Icon: TrendingUp,   description: "Order execution, portfolio & Stop-loss AI",         iconBg: "bg-emerald-50", iconColor: "text-emerald-600" },
@@ -69,6 +76,30 @@ export default function DashboardPage() {
     <div className="space-y-5">
       {/* Haut du tableau de bord : vraies donnees (portefeuille, niveau, parties, decisions de l'IA) */}
       <DashboardTop />
+
+      {/* Module 2 : portefeuille de trading reel (GET /api/trading/portfolio) */}
+      {portfolio && (
+        <button type="button" onClick={() => navigate("/trading")} className="block w-full text-start">
+        <CardShell className="p-4 hover:shadow-sm transition-shadow">
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center"><TrendingUp className="w-4 h-4 text-emerald-600" /></div>
+              <div>
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">Compte de trading</p>
+                <p className="text-lg font-semibold text-foreground" style={MONO}>{fmt(portfolio.equity)}</p>
+              </div>
+            </div>
+            <div><p className="text-[10px] text-muted-foreground uppercase tracking-widest">Rendement</p>
+              <p className={`text-sm font-semibold ${portfolio.totalReturnPct >= 0 ? "text-emerald-600" : "text-red-500"}`} style={MONO}>{portfolio.totalReturnPct >= 0 ? "+" : ""}{portfolio.totalReturnPct} %</p></div>
+            <div><p className="text-[10px] text-muted-foreground uppercase tracking-widest">Liquidités</p>
+              <p className="text-sm font-semibold text-foreground" style={MONO}>{fmt(portfolio.cash)}</p></div>
+            <div><p className="text-[10px] text-muted-foreground uppercase tracking-widest">Positions ouvertes</p>
+              <p className="text-sm font-semibold text-foreground">{portfolio.openPositions} <span className="text-[11px] font-normal text-muted-foreground">· {inProfit} en gain · {portfolio.pendingOrders} en attente</span></p></div>
+            <span className="ms-auto inline-flex items-center gap-1 text-[12px] font-medium text-blue-600">Ouvrir le trading <ChevronRight className="w-3.5 h-3.5 rtl:rotate-180" /></span>
+          </div>
+        </CardShell>
+        </button>
+      )}
 
       {/* Market Table */}
       <CardShell className="overflow-hidden">
