@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { Lock } from "lucide-react";
+import { useNavigate } from "react-router";
+import { LEVEL_LABEL, money, useProgression } from "../../../progression/ProgressionContext";
+import { useAuth } from "../../../auth/AuthContext";
 import { CartesianGrid, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   AlertOctagon, ArrowDownRight, ArrowUpRight, CircleStop, FastForward, Pause, Play, Power, ShieldAlert, ShieldCheck,
@@ -65,6 +69,16 @@ export default function AutopilotPanel({ agent }: { agent: AgentConfig }) {
   const [error, setError] = useState("");
   const [config, setConfig] = useState<AutopilotStart>({ intervalSeconds: 5, maxOrdersPerDay: 20, maxLossPct: 10, killSwitch: true, capital: 10000 });
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { progression, refresh: refreshWallet } = useProgression();
+  const isAdmin = useAuth().user?.role === "ADMIN";
+  const navigate = useNavigate();
+  // le pilote joue avec le portefeuille du jeu : debloque a partir du niveau Intermediaire (sauf administrateur)
+  const fromWallet = !isAdmin && !!progression;
+  const locked = fromWallet && progression!.level === "DEBUTANT";
+  useEffect(() => {
+    if (fromWallet) setConfig((c) => ({ ...c, capital: Math.floor(progression!.balance) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromWallet, progression?.balance]);
 
   const refresh = () => autopilotApi.get(agent.id!).then(setView).catch((e) => setError(errorMessage(e))).finally(() => setLoaded(true));
 
@@ -91,6 +105,8 @@ export default function AutopilotPanel({ agent }: { agent: AgentConfig }) {
     setError("");
     try {
       setView(await fn());
+      // demarrer prend l'argent du portefeuille, arreter le rend : on met a jour le badge
+      if (fromWallet) refreshWallet().catch(() => {});
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -111,9 +127,22 @@ export default function AutopilotPanel({ agent }: { agent: AgentConfig }) {
       </div>
       <p className="text-[12px] text-muted-foreground mb-4 max-w-3xl">
         {agent.name} trade seul, sans intervention, sur un marché simulé en continu (un jour de bourse à chaque intervalle),
-        avec un portefeuille papier. Trois garde-fous le surveillent : une perte maximale, un nombre d'ordres par jour et un
+        avec {fromWallet ? <b>l'argent de ton portefeuille du jeu</b> : "un portefeuille papier"}. Trois garde-fous le surveillent : une perte maximale, un nombre d'ordres par jour et un
         coupe-circuit qui l'arrête si son comportement devient inhabituel.
+        {fromWallet && " À l'arrêt, le pilote te rend son argent, avec son gain ou sa perte : ton niveau est alors recalculé."}
       </p>
+      {locked && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-amber-400/40 bg-amber-400/10 px-4 py-3">
+          <Lock className="w-5 h-5 text-amber-500" />
+          <p className="flex-1 min-w-[240px] text-[12.5px] text-foreground">
+            <b>Pilote verrouillé au niveau {LEVEL_LABEL.DEBUTANT}.</b> Confier son argent à un robot demande de comprendre le risque :
+            progresse d'abord dans le Jeu de trading jusqu'au niveau {LEVEL_LABEL.INTERMEDIAIRE}.
+          </p>
+          <button onClick={() => navigate("/agent?play=1")} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">
+            Jouer une partie
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div>
           <label className={labelClass}>Rythme</label>
@@ -123,8 +152,9 @@ export default function AutopilotPanel({ agent }: { agent: AgentConfig }) {
           </select>
         </div>
         <div>
-          <label className={labelClass}>Capital ($)</label>
-          <input type="number" min={1000} step={1000} value={config.capital} onChange={(e) => setConfig({ ...config, capital: Number(e.target.value) })}
+          <label className={labelClass}>Capital ($){fromWallet && ` · max ${money(progression!.balance)}`}</label>
+          <input type="number" min={fromWallet ? 100 : 1000} max={fromWallet ? Math.floor(progression!.balance) : undefined} step={fromWallet ? 100 : 1000}
+            value={config.capital} onChange={(e) => setConfig({ ...config, capital: Number(e.target.value) })}
             className="w-full bg-muted/30 border border-border rounded-lg px-3 py-2 text-sm text-foreground outline-none" />
         </div>
         <div>
@@ -141,7 +171,7 @@ export default function AutopilotPanel({ agent }: { agent: AgentConfig }) {
         </label>
       </div>
       {error && <p className="text-xs text-red-600 mt-3">{error}</p>}
-      <button onClick={() => act(() => autopilotApi.start(agent.id!, config))} disabled={busy}
+      <button onClick={() => act(() => autopilotApi.start(agent.id!, config))} disabled={busy || locked}
         className="mt-4 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg px-5 py-2.5">
         <Play className="w-4 h-4" />{busy ? "Démarrage…" : view ? "Démarrer une nouvelle session" : "Démarrer le pilote automatique"}
       </button>

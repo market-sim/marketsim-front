@@ -11,6 +11,7 @@ import { maxDrawdown, simulateHuman } from "../replayUtils";
 import BeginnerSchool from "./BeginnerSchool";
 import CandleChart, { type HumanTrade } from "./CandleChart";
 import ConfidenceGauge from "./ConfidenceGauge";
+import { LEVEL_LABEL, money, useProgression } from "../../../progression/ProgressionContext";
 
 /** Jours simules par seconde : on demarre lentement (1 j/s) pour avoir le temps de comprendre chaque bougie. */
 const SPEEDS = [0.5, 1, 2, 5, 10, 20, 40];
@@ -19,7 +20,8 @@ const DEFAULT_SPEED = 1;
 const ZOOMS = [20, 40, 80];
 const EVENT_LABEL: Record<number, string> = { 1: "achète", 2: "vend", 3: "stop-loss", 4: "take-profit" };
 
-export default function ReplayPanel({ agent }: { agent: AgentConfig }) {
+export default function ReplayPanel({ agent, startInGame = false, onGameOpened }: { agent: AgentConfig; startInGame?: boolean; onGameOpened?: () => void }) {
+  const { progression } = useProgression();
   const symbols = agent.allowedAssets.split(",").map((s) => s.trim()).filter(Boolean);
   const [config, setConfig] = useState({ symbol: symbols[0] ?? "AAPL", days: 252, model: "REGIME_SWITCHING" as PriceModel, crash: true, seed: null as number | null });
   const [replay, setReplay] = useState<ReplayResult | null>(null);
@@ -27,7 +29,14 @@ export default function ReplayPanel({ agent }: { agent: AgentConfig }) {
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(DEFAULT_SPEED);
   const [zoom, setZoom] = useState(40);
-  const [learn, setLearn] = useState(false);
+  const [learn, setLearn] = useState(startInGame);
+  useEffect(() => {
+    if (startInGame) {
+      setLearn(true);
+      onGameOpened?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startInGame]);
   const [trades, setTrades] = useState<HumanTrade[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -121,9 +130,11 @@ export default function ReplayPanel({ agent }: { agent: AgentConfig }) {
           className="w-full mb-5 flex items-center gap-3 rounded-xl border border-blue-500/40 bg-blue-500/10 hover:bg-blue-500/15 px-4 py-3 text-left transition-colors">
           <span className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center shrink-0"><GraduationCap className="w-5 h-5 text-white" /></span>
           <span className="min-w-0">
-            <span className="block text-sm font-semibold text-foreground" style={DISPLAY}>🎓 Mode débutant : 1 000 € virtuels avec le coach IA</span>
+            <span className="block text-sm font-semibold text-foreground" style={DISPLAY}>
+              🎓 Jeu de trading · {progression ? `${money(progression.balance)} · niveau ${LEVEL_LABEL[progression.level]}` : "1 000 $ virtuels"}
+            </span>
             <span className="block text-[11.5px] text-muted-foreground">
-              Tu pars de zéro : le coach te conseille d'acheter, de garder ou de vendre et t'explique pourquoi ; à la fin, ton bilan te montre ce que tu as bien ou mal fait.
+              Joue avec ton portefeuille : gagne pour le faire grandir et monter de niveau. Plus ton niveau monte, plus le jeu devient difficile (moins d'aide du coach, frais plus élevés, krach imposé).
             </span>
           </span>
           <span className="ml-auto text-[12px] font-semibold text-blue-500 shrink-0">Commencer →</span>

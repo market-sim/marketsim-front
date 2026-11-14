@@ -18,9 +18,12 @@ api.interceptors.response.use(
   (res) => res,
   (error) => {
     // Token expire / invalide : on deconnecte et on renvoie vers /login
-    if (error.response?.status === 401 && !location.pathname.startsWith("/login")) {
+    // (pas de redirection sur les pages publiques : lien de reinitialisation, confirmation d'e-mail...)
+    const publicPage = ["/login", "/register", "/forgot-password", "/reset-password", "/verify-email", "/t/"]
+      .some((p) => location.pathname.startsWith(p));
+    if (error.response?.status === 401) {
       localStorage.removeItem(TOKEN_KEY);
-      location.href = "/login";
+      if (!publicPage) location.href = "/login";
     }
     return Promise.reject(error);
   },

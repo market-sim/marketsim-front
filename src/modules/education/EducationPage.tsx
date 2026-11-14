@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router";
 import { coursesApi, type Course } from "../../api/endpoints";
 import {
   LayoutDashboard,
@@ -38,11 +39,39 @@ import {
 import { fmt, pct, priceDisplay, MONO, DISPLAY, SignalBadge, SectionHeader, CardShell } from "../../shared/ui";
 import type { Signal, Sentiment, Direction, BankStatus } from "../../shared/ui";
 import { leaderboard } from "./mockData";
+import AcademyPage from "./academy/AcademyPage";
 
 const levelLabel = { BEGINNER: "Beginner", INTERMEDIATE: "Intermediate", ADVANCED: "Advanced" } as const;
 const levelIcon = { BEGINNER: TrendingUp, INTERMEDIATE: BarChart2, ADVANCED: Bot } as const;
 
+type EduTab = "academy" | "courses";
+
+/** Module Formation & pedagogie : l'Academie 3D (par defaut) et les cours du module 4. */
 export default function EducationPage() {
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<EduTab>(params.get("tab") === "courses" ? "courses" : "academy");
+  useEffect(() => {
+    if (params.get("tab") === "courses") setTab("courses");
+  }, [params]);
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1 p-1 rounded-xl bg-muted/50 w-fit">
+        {([["academy", "Académie (jeu 3D)", Zap], ["courses", "Cours & quiz", GraduationCap]] as const).map(([id, label, Icon]) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className={`flex items-center gap-1.5 text-[13px] font-medium rounded-lg px-3.5 py-1.5 transition-colors ${tab === id ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            <Icon className="w-4 h-4" />{label}
+          </button>
+        ))}
+      </div>
+      {tab === "academy" ? <AcademyPage /> : <CoursesView />}
+    </div>
+  );
+}
+
+function CoursesView() {
   // Module 4 : cours venant du backend (GET /api/education/courses)
   const [apiCourses, setApiCourses] = useState<Course[]>([]);
   useEffect(() => { coursesApi.list().then(setApiCourses).catch(() => setApiCourses([])); }, []);

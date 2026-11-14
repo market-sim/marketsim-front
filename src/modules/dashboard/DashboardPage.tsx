@@ -48,7 +48,7 @@ import {
 } from "lucide-react";
 import { fmt, pct, priceDisplay, MONO, DISPLAY, SignalBadge, SectionHeader, CardShell } from "../../shared/ui";
 import type { Signal, Sentiment, Direction, BankStatus } from "../../shared/ui";
-import { portfolioData, marketAssets, aiInsights } from "./mockData";
+import DashboardTop from "./DashboardTop";
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -67,76 +67,8 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      {/* KPI */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: "Virtual Portfolio", value: "$125,480", sub: "+$2,340 today (+1.9%)",  positive: true,  Icon: Wallet },
-          { label: "Open Positions",    value: "7",        sub: "3 positions in profit",   positive: true,  Icon: Target },
-          { label: "Win Rate",          value: "64.3%",    sub: "Last 30 trading days",    positive: true,  Icon: Award  },
-          { label: "AI Risk Score",     value: "23 / 100", sub: "Low exposure level",      positive: true,  Icon: Zap    },
-        ].map(({ label, value, sub, positive, Icon }) => (
-          <CardShell key={label} className="p-5 hover:shadow-sm transition-shadow">
-            <div className="flex items-start justify-between mb-3">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest">{label}</p>
-              <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-                <Icon className="w-4 h-4 text-blue-600" />
-              </div>
-            </div>
-            <p className="text-2xl font-semibold text-foreground" style={MONO}>{value}</p>
-            <p className={`text-[11px] mt-1.5 ${positive ? "text-emerald-600" : "text-red-500"}`}>{sub}</p>
-          </CardShell>
-        ))}
-      </div>
-
-      {/* Chart + Insights */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <CardShell className="lg:col-span-2 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>Portfolio Performance</h3>
-              <p className="text-[11px] text-muted-foreground mt-0.5">vs. S&amp;P 500 benchmark · 30 days</p>
-            </div>
-            <div className="flex items-center gap-4 text-[11px]">
-              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-500" /><span className="text-muted-foreground">Portfolio</span></span>
-              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-slate-300" /><span className="text-muted-foreground">Benchmark</span></span>
-            </div>
-          </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <ComposedChart data={portfolioData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="gradPortfolio" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#2563EB" stopOpacity={0.13} />
-                  <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-              <Tooltip contentStyle={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: "8px", fontSize: "11px" }} formatter={(v: any) => [fmt(Number(v))]} labelStyle={{ color: "#64748B" }} />
-              <Line type="monotone" dataKey="benchmark" stroke="#CBD5E1" strokeWidth={1.5} dot={false} />
-              <Area type="monotone" dataKey="value" stroke="#2563EB" strokeWidth={2} fill="url(#gradPortfolio)" dot={false} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </CardShell>
-
-        <CardShell className="p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>AI Insights</h3>
-            <span className="text-[10px] font-semibold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">Live</span>
-          </div>
-          <div className="space-y-3">
-            {aiInsights.map((ins, i) => (
-              <div key={i} className={`rounded-lg p-3 border-l-2 ${ins.sentiment === "bullish" ? "bg-emerald-50 border-emerald-500" : ins.sentiment === "caution" ? "bg-amber-50 border-amber-400" : "bg-slate-50 border-slate-300"}`}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-semibold text-foreground">{ins.asset}</span>
-                  <span className={`text-[10px] font-medium uppercase tracking-wide ${ins.sentiment === "bullish" ? "text-emerald-600" : ins.sentiment === "caution" ? "text-amber-600" : "text-slate-400"}`}>{ins.type}</span>
-                </div>
-                <p className="text-[11px] text-muted-foreground leading-snug">{ins.message}</p>
-              </div>
-            ))}
-          </div>
-        </CardShell>
-      </div>
+      {/* Haut du tableau de bord : vraies donnees (portefeuille, niveau, parties, decisions de l'IA) */}
+      <DashboardTop />
 
       {/* Market Table */}
       <CardShell className="overflow-hidden">

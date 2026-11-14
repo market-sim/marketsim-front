@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Bot, Brain, Database, Dices, Gamepad2, GraduationCap, Link2, Pencil, Plus, Power, Sparkles, Trash2, Trophy, Wand2 } from "lucide-react";
+import { useSearchParams } from "react-router";
+import { Bot, Brain, Database, Dices, Gamepad2, GraduationCap, Layers, Link2, Pencil, Plus, Power, Sparkles, Trash2, Trophy, Wand2 } from "lucide-react";
 import { agentsApi, assetsApi, type AgentConfig, type AnomalyReport, type Asset } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
 import { CardShell, DISPLAY } from "../../shared/ui";
@@ -12,12 +13,13 @@ import AutopilotPanel from "./components/AutopilotPanel";
 import DecisionsPanel from "./components/DecisionsPanel";
 import MonteCarloPanel from "./components/MonteCarloPanel";
 import ReplayPanel from "./components/ReplayPanel";
+import PortfolioPanel from "./components/PortfolioPanel";
 import TournamentPanel from "./components/TournamentPanel";
 import TrainingPanel from "./components/TrainingPanel";
 import WalkForwardPanel from "./components/WalkForwardPanel";
 import { personalities, personalityOf, strategyLabel, strategyShort } from "./format";
 
-type Tab = "assistant" | "autopilot" | "decisions" | "montecarlo" | "training" | "realdata" | "tournament" | "replay" | "audit";
+type Tab = "assistant" | "autopilot" | "decisions" | "montecarlo" | "training" | "realdata" | "portfolio" | "tournament" | "replay" | "audit";
 
 const TABS: { id: Tab; label: string; Icon: typeof Brain }[] = [
   { id: "assistant", label: "Assistant IA", Icon: Sparkles },
@@ -26,6 +28,7 @@ const TABS: { id: Tab; label: string; Icon: typeof Brain }[] = [
   { id: "montecarlo", label: "Monte Carlo", Icon: Dices },
   { id: "training", label: "Entraînement RL", Icon: GraduationCap },
   { id: "realdata", label: "Données réelles", Icon: Database },
+  { id: "portfolio", label: "Multi-actifs", Icon: Layers },
   { id: "tournament", label: "Tournoi", Icon: Trophy },
   { id: "replay", label: "Replay vs Agent", Icon: Gamepad2 },
   { id: "audit", label: "Audit blockchain", Icon: Link2 },
@@ -36,7 +39,13 @@ export default function AgentPage() {
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [tab, setTab] = useState<Tab>("decisions");
+  const [params, setParams] = useSearchParams();
+  const playRequested = params.get("play") === "1";
+  const [tab, setTab] = useState<Tab>(playRequested ? "replay" : "decisions");
+  // lien « Jouer une partie » (badge de niveau, guide) : ouvre directement le jeu de trading
+  useEffect(() => {
+    if (playRequested) setTab("replay");
+  }, [playRequested]);
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
@@ -44,6 +53,12 @@ export default function AgentPage() {
   const [demoBusy, setDemoBusy] = useState(false);
   const [auditFocus, setAuditFocus] = useState<number | null>(null);
   const loadReports = () => agentsApi.allAnomalies().then(setReports).catch(() => setReports([]));
+
+  // lien de la recherche globale : ?agent=ID ouvre cet agent
+  const agentParam = Number(params.get("agent")) || null;
+  useEffect(() => {
+    if (agentParam && agents.some((a) => a.id === agentParam)) setSelectedId(agentParam);
+  }, [agentParam, agents]);
 
   const load = async (selectId?: number) => {
     try {
@@ -244,8 +259,9 @@ export default function AgentPage() {
             {tab === "montecarlo" && <MonteCarloPanel agent={agent} />}
             {tab === "training" && <TrainingPanel agent={agent} onTrained={() => load()} />}
             {tab === "realdata" && <WalkForwardPanel agent={agent} onOpenAudit={(id) => { setAuditFocus(id); setTab("audit"); }} />}
+            {tab === "portfolio" && <PortfolioPanel agent={agent} />}
             {tab === "tournament" && <TournamentPanel agents={agents} assets={assets} />}
-            {tab === "replay" && <ReplayPanel agent={agent} />}
+            {tab === "replay" && <ReplayPanel agent={agent} startInGame={playRequested} onGameOpened={() => { if (playRequested) setParams({}, { replace: true }); }} />}
             {tab === "audit" && <AuditPanel agent={agent} focusRecordId={auditFocus} onFocusConsumed={() => setAuditFocus(null)} />}
           </div>
         </div>

@@ -1,4 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import Recaptcha, { type RecaptchaHandle } from "../../auth/Recaptcha";
+import PasswordStrength, { passwordProblem } from "../../auth/PasswordStrength";
 import { Link, Navigate, useNavigate } from "react-router";
 import { useAuth } from "../../auth/AuthContext";
 import { authApi } from "../../api/endpoints";
@@ -12,6 +14,10 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [registrationEnabled, setRegistrationEnabled] = useState<boolean | null>(null);
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  // null = serveur pas encore joint (il demarre) : bouton desactive
+  const [captchaOn, setCaptchaOn] = useState<boolean | null>(null);
+  const captchaRef = useRef<RecaptchaHandle>(null);
 
   useEffect(() => {
     if (user) return;
@@ -27,13 +33,19 @@ export default function RegisterPage() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    const weak = passwordProblem(form.password);
+    if (weak) {
+      setError(`Mot de passe : ${weak.toLowerCase()}.`);
+      return;
+    }
     setBusy(true);
     setError("");
     try {
-      await register(form);
+      await register(form, captcha);
       navigate("/");
     } catch (err) {
       setError(errorMessage(err));
+      captchaRef.current?.reset();
     } finally {
       setBusy(false);
     }
@@ -70,11 +82,13 @@ export default function RegisterPage() {
               <input type="email" required value={form.email} onChange={set("email")} className={inputClass} />
             </div>
             <div>
-              <label className={labelClass}>Mot de passe (6+ caractères)</label>
-              <input type="password" required minLength={6} value={form.password} onChange={set("password")} className={inputClass} />
+              <label className={labelClass}>Mot de passe</label>
+              <input type="password" required minLength={8} autoComplete="new-password" value={form.password} onChange={set("password")} className={inputClass} />
+              <PasswordStrength password={form.password} />
             </div>
+            <Recaptcha ref={captchaRef} onToken={setCaptcha} onReady={setCaptchaOn} />
             {error && <p className="text-xs text-red-600">{error}</p>}
-            <button disabled={busy || registrationEnabled === null} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 transition-colors">
+            <button disabled={busy || registrationEnabled === null || captchaOn === null || (captchaOn && !captcha)} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 transition-colors">
               {busy ? "Création..." : "Créer mon compte"}
             </button>
           </form>

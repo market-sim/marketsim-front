@@ -20,6 +20,9 @@ export interface Decision {
 
 export const eur = (v: number) =>
   v.toLocaleString("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 0, maximumFractionDigits: 2 });
+/** Le jeu de trading (portefeuille de progression) est en dollars virtuels. */
+export const usd = (v: number) =>
+  `${v.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} $`;
 const pct = (v: number, digits = 1) => `${(v * 100).toFixed(digits).replace(".", ",")} %`;
 const pctSigned = (v: number, digits = 1) => `${v >= 0 ? "+" : "−"}${Math.abs(v * 100).toFixed(digits).replace(".", ",")} %`;
 
@@ -155,7 +158,7 @@ export function buildDebrief(replay: ReplayResult, trades: HumanTrade[], decisio
     }
   }
   if (orders >= 8 || sim.fees / capital > 0.01) {
-    lessons.push(`Tu as passé ${orders} ordres : ${eur(sim.fees)} de frais (${(replay.costRate * 100).toFixed(1).replace(".", ",")} % par ordre). Plus on trade, plus les frais rongent le capital.`);
+    lessons.push(`Tu as passé ${orders} ordres : ${usd(sim.fees)} de frais (${(replay.costRate * 100).toFixed(2).replace(".", ",")} % par ordre). Plus on trade, plus les frais rongent le capital.`);
   }
   if (best && best.ret > 0.02 && lessons.length < 4) {
     lessons.push(`Ton meilleur trade : acheté au jour ${best.entryDay}${best.open ? ", toujours ouvert" : `, vendu au jour ${best.exitDay}`} → ${pctSigned(best.ret)}. Ce jour-là, le coach conseillait : ${coachWord[best.coachAtEntry]}.`);
@@ -165,8 +168,8 @@ export function buildDebrief(replay: ReplayResult, trades: HumanTrade[], decisio
   }
 
   const headline = pnl >= 0
-    ? `Tu as transformé ${eur(capital)} en ${eur(final)} (${pctSigned(pnlPct)}).`
-    : `Tu as perdu ${eur(-pnl)} : ${eur(capital)} sont devenus ${eur(final)} (${pctSigned(pnlPct)}).`;
+    ? `Tu as transformé ${usd(capital)} en ${usd(final)} (${pctSigned(pnlPct)}).`
+    : `Tu as perdu ${usd(-pnl)} : ${usd(capital)} sont devenus ${usd(final)} (${pctSigned(pnlPct)}).`;
 
   return {
     capital, final, pnl, pnlPct, benchFinal, benchPct, agentFinal, agentPct, trips, wins, winRate: trips.length ? wins / trips.length : null,

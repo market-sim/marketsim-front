@@ -1,9 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "react-router";
+import { LEVEL_COLOR, LEVEL_LABEL } from "../../progression/ProgressionContext";
+import type { TraderLevel } from "../../api/endpoints";
+import PasswordStrength, { passwordProblem } from "../../auth/PasswordStrength";
 import { useAuth } from "../../auth/AuthContext";
 import { authApi, type SecurityScore, type UserLevelAssessment } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
 import { CardShell, DISPLAY } from "../../shared/ui";
 import { inputClass, labelClass } from "./AuthLayout";
+import ProfileExtras from "./ProfileExtras";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -78,8 +83,9 @@ export default function ProfilePage() {
       setError("Le mot de passe actuel et le nouveau mot de passe sont requis.");
       return;
     }
-    if (changingPassword && newPassword.length < 6) {
-      setError("Le nouveau mot de passe doit contenir au moins 6 caractères.");
+    const weak = changingPassword ? passwordProblem(newPassword) : null;
+    if (weak) {
+      setError(`Nouveau mot de passe : ${weak.toLowerCase()}.`);
       return;
     }
 
@@ -102,7 +108,8 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="space-y-4 max-w-lg">
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+    <div className="space-y-4 max-w-lg w-full">
     <CardShell className="p-6">
       <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>Niveau de trader</h3>
       <p className="text-[11px] text-muted-foreground mt-1 mb-3">
@@ -118,7 +125,14 @@ export default function ProfilePage() {
           Activité insuffisante ({level.successfulLoginCount} connexion{level.successfulLoginCount > 1 ? "s" : ""} réussie{level.successfulLoginCount > 1 ? "s" : ""}). Le compte reste Débutant — aucun niveau n&apos;est inventé.
         </p>
       )}
-      {!levelLoading && level && !level.insufficientEvidence && (
+      {!levelLoading && level?.reasonCodes.includes("TRADING_PROGRESSION") && (
+        <p className="text-[12px] text-foreground">
+          <b style={{ color: LEVEL_COLOR[level.level as TraderLevel] }}>{LEVEL_LABEL[level.level as TraderLevel] ?? level.level}</b>
+          {" "}· calculé à partir de ton portefeuille du Jeu de trading et de ta façon de trader.{" "}
+          <Link to="/progression" className="text-blue-600 font-medium">Voir ma progression</Link>
+        </p>
+      )}
+      {!levelLoading && level && !level.insufficientEvidence && !level.reasonCodes.includes("TRADING_PROGRESSION") && (
         <p className="text-[12px] text-foreground">
           {level.level ?? "—"} · score {level.score ?? "—"} · {level.reasonCodes.join(", ") || "—"}
           {level.modelVersion ? ` · ${level.modelVersion}` : ""}
@@ -173,8 +187,9 @@ export default function ProfilePage() {
               <input type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className={inputClass} />
             </div>
             <div>
-              <label className={labelClass}>Nouveau mot de passe (6+ caractères)</label>
+              <label className={labelClass}>Nouveau mot de passe</label>
               <input type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className={inputClass} />
+              {newPassword && <PasswordStrength password={newPassword} />}
             </div>
           </div>
         </div>
@@ -185,6 +200,8 @@ export default function ProfilePage() {
         </button>
       </form>
     </CardShell>
+    </div>
+    <ProfileExtras />
     </div>
   );
 }

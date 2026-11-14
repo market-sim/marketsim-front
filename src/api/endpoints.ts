@@ -1,6 +1,6 @@
 // Tous les appels vers le backend, regroupes par module.
 // Chaque membre du groupe ajoute ici les fonctions de SON module.
-import { api } from "./client";
+import { API_URL, api } from "./client";
 
 // ─── Module 1 : Utilisateurs & Administration ────────────────────────────────
 export type Role = "USER" | "ADMIN";
@@ -14,8 +14,15 @@ export interface User {
   virtualBalance: number;
   enabled: boolean;
   createdAt: string;
+  /** e-mail confirme par le lien d'inscription (les anciens comptes le sont d'office) */
+  emailConfirmed?: boolean;
+  totpEnabled?: boolean | null;
+  deleted?: boolean | null;
+  /** chemin de la photo de profil (/api/public/avatars/...), null si aucune */
+  avatarUrl?: string | null;
 }
-export interface AuthResponse { token: string; user: User }
+/** Si la double authentification est active : token/user vides, twoFactorRequired + challenge. */
+export interface AuthResponse { token: string | null; user: User | null; twoFactorRequired?: boolean; challenge?: string | null }
 
 export interface UpdateProfileRequest {
   firstName?: string;
@@ -33,11 +40,15 @@ export interface UserProfileResponse {
   token?: string | null;
 }
 
+/** Jeton Google reCAPTCHA envoye dans l'en-tete X-Captcha-Token (connexion, inscription, mot de passe oublie). */
+const captchaHeader = (token?: string | null) => (token ? { headers: { "X-Captcha-Token": token } } : undefined);
+
 export const authApi = {
-  login: (email: string, password: string) =>
-    api.post<AuthResponse>("/auth/login", { email, password }).then((r) => r.data),
-  register: (data: { firstName: string; lastName: string; email: string; password: string }) =>
-    api.post<AuthResponse>("/auth/register", data).then((r) => r.data),
+  login: (email: string, password: string, captcha?: string | null) =>
+    api.post<AuthResponse>("/auth/login", { email, password }, captchaHeader(captcha)).then((r) => r.data),
+  register: (data: { firstName: string; lastName: string; email: string; password: string }, captcha?: string | null) =>
+    api.post<AuthResponse>("/auth/register", data, captchaHeader(captcha)).then((r) => r.data),
+  captchaConfig: () => api.get<{ enabled: boolean; siteKey: string | null }>("/auth/captcha-config").then((r) => r.data),
   me: () => api.get<User>("/users/me").then((r) => r.data),
   updateProfile: (data: UpdateProfileRequest) =>
     api.patch<UserProfileResponse>("/users/me", data).then((r) => r.data),
@@ -45,7 +56,47 @@ export const authApi = {
     api.get<{ registrationEnabled: boolean }>("/auth/registration-status").then((r) => r.data),
   mySecurityScore: () => api.get<SecurityScore>("/users/me/security-score").then((r) => r.data),
   myLevel: () => api.get<UserLevelAssessment>("/users/me/level").then((r) => r.data),
+  loginTwoFactor: (challenge: string, code: string) =>
+    api.post<AuthResponse>("/auth/login/2fa", { challenge, code }).then((r) => r.data),
+  forgotPassword: (email: string, captcha?: string | null) =>
+    api.post<Message>("/auth/forgot-password", { email }, captchaHeader(captcha)).then((r) => r.data),
+  resetPassword: (token: string, newPassword: string) =>
+    api.post<Message>("/auth/reset-password", { token, newPassword }).then((r) => r.data),
+  verifyEmail: (token: string) => api.post<Message>("/auth/verify-email", { token }).then((r) => r.data),
 };
+
+export interface Message { message: string }
+export interface SessionView {
+  id: string; device: string | null; ipAddress: string | null; createdAt: string; lastSeenAt: string;
+  expiresAt: string; current: boolean;
+}
+export interface AccountStatus { emailConfirmed: boolean; twoFactorEnabled: boolean; activeSessions: number }
+
+/** Securite du compte connecte (module 1). */
+export const accountApi = {
+  status: () => api.get<AccountStatus>("/account/status").then((r) => r.data),
+  /** le jeton est passe explicitement : il est retire du stockage juste apres l'appel */
+  logout: (token: string) =>
+    api.post<Message>("/account/logout", null, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.data),
+  sessions: () => api.get<SessionView[]>("/account/sessions").then((r) => r.data),
+  revokeSession: (id: string) => api.delete<Message>(`/account/sessions/${id}`).then((r) => r.data),
+  revokeOthers: () => api.post<Message>("/account/sessions/revoke-others").then((r) => r.data),
+  resendVerification: () => api.post<Message>("/account/resend-verification").then((r) => r.data),
+  setupTwoFactor: () => api.post<{ secret: string; otpauthUri: string }>("/account/2fa/setup").then((r) => r.data),
+  enableTwoFactor: (code: string) => api.post<Message>("/account/2fa/enable", { code }).then((r) => r.data),
+  disableTwoFactor: (password: string, code: string) =>
+    api.post<Message>("/account/2fa/disable", { password, code }).then((r) => r.data),
+  exportData: () => api.get<Record<string, unknown>>("/account/export").then((r) => r.data),
+  deleteAccount: (password: string) => api.post<Message>("/account/delete", { password }).then((r) => r.data),
+};
+
+export interface TemporaryPassword { userId: number; email: string; temporaryPassword: string | null; message: string }
+export interface MailView {
+  id: number; recipient: string; subject: string; body: string; actionUrl: string | null; kind: string; createdAt: string;
+  /** LOCAL (pas de SMTP), PENDING, SENT ou FAILED */
+  status?: "LOCAL" | "PENDING" | "SENT" | "FAILED"; error?: string | null;
+}
+export interface MailStatus { smtpConfigured: boolean; host: string | null; port: number; security: string; from: string }
 
 export interface GlobalUserSettings {
   registrationEnabled: boolean;
@@ -69,7 +120,26 @@ export type ActivityAction =
   | "ADMIN_SET_ENABLED"
   | "ADMIN_DELETE_USER"
   | "ADMIN_SET_ROLE"
-  | "SETTINGS_UPDATE";
+  | "SETTINGS_UPDATE"
+  | "LOGOUT"
+  | "SESSION_REVOKE"
+  | "PASSWORD_RESET_REQUEST"
+  | "PASSWORD_RESET"
+  | "EMAIL_VERIFY"
+  | "TWO_FACTOR_ENABLE"
+  | "TWO_FACTOR_DISABLE"
+  | "TWO_FACTOR_LOGIN"
+  | "ACCOUNT_EXPORT"
+  | "ACCOUNT_DELETE"
+  | "ADMIN_CREATE_USER"
+  | "ADMIN_RESET_PASSWORD"
+  | "ADMIN_REVOKE_SESSIONS"
+  | "PASSKEY_REGISTER"
+  | "PASSKEY_LOGIN"
+  | "PASSKEY_DELETE"
+  | "AVATAR_UPDATE"
+  | "PREFERENCES_UPDATE"
+  | "ADMIN_SET_BALANCE";
 
 export type ActivityOutcome = "SUCCESS" | "FAILURE";
 
@@ -157,6 +227,19 @@ export interface AdminStats {
 
 export const adminApi = {
   users: () => api.get<User[]>("/admin/users").then((r) => r.data),
+  createUser: (data: { firstName: string; lastName: string; email: string; role: Role; password?: string }) =>
+    api.post<TemporaryPassword>("/admin/users/create", data).then((r) => r.data),
+  resetUserPassword: (id: number) => api.post<TemporaryPassword>(`/admin/users/${id}/reset-password`).then((r) => r.data),
+  userSessions: (id: number) => api.get<SessionView[]>(`/admin/users/${id}/sessions`).then((r) => r.data),
+  revokeUserSessions: (id: number) => api.post<Message>(`/admin/users/${id}/revoke-sessions`).then((r) => r.data),
+  mailOutbox: () => api.get<MailView[]>("/admin/mail-outbox").then((r) => r.data),
+  mailStatus: () => api.get<MailStatus>("/admin/mail-status").then((r) => r.data),
+  mailTest: () => api.post<Message>("/admin/mail-test").then((r) => r.data),
+  /** score de trading (portefeuille, niveau, competence) de chaque utilisateur qui a deja joue */
+  traderScores: () => api.get<AdminTraderScore[]>("/admin/progression").then((r) => r.data),
+  /** fixe le solde du portefeuille d'un trader (motif obligatoire, trace dans le journal) */
+  setBalance: (userId: number, balance: number, reason: string) =>
+    api.post<{ before: number; after: number; levelBefore: TraderLevel; levelAfter: TraderLevel }>(`/admin/progression/${userId}/balance`, { balance, reason }).then((r) => r.data),
   stats: (days: number, signal?: AbortSignal) =>
     api.get<AdminStats>("/admin/stats", { params: { days }, signal }).then((r) => r.data),
   userSecurityScore: (userId: number, signal?: AbortSignal) =>
@@ -715,4 +798,231 @@ export const scenariosApi = {
   create: (s: StressScenario) => api.post<StressScenario>("/stress/scenarios", s).then((r) => r.data),
   update: (id: number, s: StressScenario) => api.put<StressScenario>(`/stress/scenarios/${id}`, s).then((r) => r.data),
   remove: (id: number) => api.delete(`/stress/scenarios/${id}`),
+};
+
+// ─── Progression : portefeuille de 1 000 $, niveau du trader, difficulte de l'application ──
+export type GuideMode = "DETAILED" | "TIPS" | "NONE";
+export type CoachMode = "ALWAYS" | "ALWAYS_NO_HIGHLIGHT" | "AFTER_DECISION" | "HIDDEN";
+
+export interface Difficulty {
+  label: string;
+  stars: number;
+  guide: GuideMode;
+  coach: CoachMode;
+  /** frais par ordre (fraction du montant) */
+  feeRate: number;
+  crashForced: boolean;
+  crashPct: number;
+  minDays: number;
+  maxStepDays: number;
+  allowSkipToEnd: boolean;
+  showStopHint: boolean;
+  summary: string;
+}
+
+export interface ProgressionGoal { key: string; label: string; current: number; target: number; done: boolean }
+
+export interface Progression {
+  balance: number;
+  startBalance: number;
+  peakBalance: number;
+  level: TraderLevel;
+  bestLevel: TraderLevel | null;
+  skillScore: number;
+  games: number;
+  trades: number;
+  winRate: number;
+  profitFactor: number;
+  discipline: number;
+  avgMaxDrawdown: number;
+  restarts: number;
+  bankrupt: boolean;
+  nextLevel: TraderLevel | null;
+  nextGoals: ProgressionGoal[];
+  difficulty: Difficulty;
+  updatedAt: string | null;
+}
+
+export interface SettleGameRequest {
+  agentId: number;
+  symbol: string;
+  days: number;
+  model?: PriceModel;
+  seed: number;
+  crashPct: number | null;
+  orders: { day: number; side: "BUY" | "SELL"; fraction?: number }[];
+}
+
+export interface SettleGameResponse {
+  counted: boolean;
+  startBalance: number;
+  endBalance: number;
+  pnl: number;
+  trades: number;
+  wins: number;
+  maxDrawdown: number;
+  fees: number;
+  levelBefore: TraderLevel;
+  levelAfter: TraderLevel;
+  levelUp: boolean;
+  levelDown: boolean;
+  message: string;
+  progression: Progression;
+}
+
+export interface GameHistoryItem {
+  id: number; symbol: string; days: number; startBalance: number; endBalance: number;
+  trades: number; wins: number; maxDrawdown: number; levelBefore: TraderLevel; levelAfter: TraderLevel; playedAt: string;
+  /** rendement du joueur, de l'agent et de « acheter et garder » sur le meme marche */
+  playerReturn: number; agentReturn: number | null; benchmarkReturn: number | null; counted: boolean;
+}
+
+// ─── Module 6 : portefeuille multi-actifs ──────────────────────────────────────
+export interface PortfolioAsset {
+  symbol: string; weight: number; source: "REEL" | "SIMULE"; agentReturn: number; benchmarkReturn: number;
+  maxDrawdown: number; trades: number; wins: number;
+}
+export interface PortfolioResult {
+  agentName: string; seed: number; days: number; capital: number; agentReturn: number; benchmarkReturn: number;
+  maxDrawdown: number; benchmarkMaxDrawdown: number; sharpe: number; diversification: number; avgCorrelation: number;
+  worstSingleDrawdown: number; assets: PortfolioAsset[]; equity: number[]; benchmark: number[]; verdict: string;
+}
+export const portfolioApi = {
+  run: (agentId: number, req: { days: number; seed?: number | null; weights?: Record<string, number>; capital: number; realData: boolean }) =>
+    api.post<PortfolioResult>(`/agents/${agentId}/portfolio`, req).then((r) => r.data),
+};
+
+export const progressionApi = {
+  me: () => api.get<Progression>("/progression/me").then((r) => r.data),
+  history: () => api.get<GameHistoryItem[]>("/progression/history").then((r) => r.data),
+  settle: (req: SettleGameRequest) => api.post<SettleGameResponse>("/progression/games", req).then((r) => r.data),
+  restart: (force = false) => api.post<Progression>(`/progression/restart?force=${force}`).then((r) => r.data),
+};
+
+export interface AdminTraderScore {
+  userId: number; level: TraderLevel; bestLevel: TraderLevel | null; balance: number; skillScore: number;
+  games: number; trades: number; winRate: number; discipline: number; bankrupt: boolean; restarts: number;
+  updatedAt: string | null;
+}
+
+// ─── Notifications (cloche) ─────────────────────────────────────────────────────
+export type NotificationType = "LEVEL_UP" | "LEVEL_DOWN" | "LOW_BALANCE" | "BANKRUPT" | "NEW_DEVICE" | "PASSWORD_CHANGED" | "TWO_FACTOR" | "AUTOPILOT" | "INFO";
+export interface NotificationView {
+  id: number; type: NotificationType; title: string; message: string | null; link: string | null; createdAt: string; read: boolean;
+}
+export type NotificationFilter = "ALL" | "UNREAD" | "SECURITY" | "PROGRESS" | "INFO";
+export const notificationsApi = {
+  list: () => api.get<{ unread: number; items: NotificationView[] }>("/notifications").then((r) => r.data),
+  history: (filter: NotificationFilter = "ALL") =>
+    api.get<{ unread: number; items: NotificationView[] }>("/notifications/history", { params: { filter } }).then((r) => r.data),
+  remove: (id: number) => api.delete(`/notifications/${id}`),
+  removeRead: () => api.delete<{ deleted: number }>("/notifications/read").then((r) => r.data),
+  read: (id: number) => api.post(`/notifications/${id}/read`),
+  readAll: () => api.post("/notifications/read-all"),
+};
+
+// ─── Classement des traders ─────────────────────────────────────────────────────
+export interface LeaderboardBadge { id: string; label: string; description: string }
+export interface LeaderboardEntry {
+  rank: number; displayName: string; me: boolean; level: TraderLevel; skillScore: number; balance: number;
+  games: number; trades: number; winRate: number; badges: LeaderboardBadge[];
+}
+export const leaderboardApi = {
+  get: (limit = 50) =>
+    api.get<{ traders: number; me: LeaderboardEntry | null; top: LeaderboardEntry[] }>(`/progression/leaderboard?limit=${limit}`).then((r) => r.data),
+};
+
+// ─── Academie du trading : parcours personnalise et mentor IA ─────────────────────
+export type AcademyPriority = "HIGH" | "MEDIUM" | "LOW";
+export interface AcademyRecommendation { stationId: string; priority: AcademyPriority; reasons: string[] }
+export interface AcademyAdvice {
+  recommendations: AcademyRecommendation[]; games: number; beatAgent: number; gamesVsAgent: number;
+  secretUnlocked: boolean; summary: string;
+}
+export const academyApi = {
+  advice: () => api.get<AcademyAdvice>("/academy/advice").then((r) => r.data),
+  mentor: (messages: AssistantMessage[], academyContext: string) =>
+    api.post<AssistantReply>("/academy/mentor", { messages, academyContext }).then((r) => r.data),
+};
+
+// ─── Module 1 : profil enrichi (preferences, photo, carte de trader) et passkeys ─────────
+export type Language = "fr" | "en" | "ar";
+export type ThemePref = "light" | "dark" | "system";
+export interface Preferences {
+  userId: number; language: Language; theme: ThemePref;
+  inAppProgress: boolean; inAppSecurity: boolean; emailSecurity: boolean; emailProgress: boolean;
+  publicProfile: boolean; publicId: string; bio: string | null; updatedAt: string | null;
+}
+export type PreferencesUpdate = Partial<Omit<Preferences, "userId" | "publicId" | "updatedAt">>;
+
+export interface CardBadge { id: string; label: string; description: string }
+export interface TraderCard {
+  publicId: string; isPublic: boolean; displayName: string; avatarUrl: string | null; level: TraderLevel;
+  bestLevel: TraderLevel | null; skillScore: number; games: number; trades: number; winRate: number; discipline: number;
+  rank: number | null; traders: number; badges: CardBadge[]; memberSince: string | null; bio: string | null;
+}
+
+/** Adresse complete d'une ressource du backend (photo de profil...). */
+export function backendUrl(path: string | null | undefined): string | null {
+  if (!path) return null;
+  return API_URL.replace(/\/api\/?$/, "") + path;
+}
+
+export const profileApi = {
+  preferences: () => api.get<Preferences>("/account/preferences").then((r) => r.data),
+  updatePreferences: (p: PreferencesUpdate) => api.put<Preferences>("/account/preferences", p).then((r) => r.data),
+  newPublicLink: () => api.post<Preferences>("/account/preferences/new-public-link").then((r) => r.data),
+  uploadAvatar: (image: string) => api.put<{ avatarUrl: string }>("/account/avatar", { image }).then((r) => r.data),
+  deleteAvatar: () => api.delete("/account/avatar"),
+  myCard: () => api.get<TraderCard>("/account/card").then((r) => r.data),
+  publicCard: (publicId: string) => api.get<TraderCard>(`/public/traders/${publicId}`).then((r) => r.data),
+};
+
+export interface Passkey {
+  id: number; name: string; backedUp: boolean; transports: string | null; createdAt: string; lastUsedAt: string | null;
+}
+export const passkeyApi = {
+  registrationOptions: () => api.post<Record<string, unknown>>("/account/passkeys/options").then((r) => r.data),
+  register: (body: { id: string; clientDataJSON: string; attestationObject: string; transports: string[]; name: string }) =>
+    api.post<Passkey>("/account/passkeys", body).then((r) => r.data),
+  list: () => api.get<Passkey[]>("/account/passkeys").then((r) => r.data),
+  rename: (id: number, name: string) => api.patch<Passkey>(`/account/passkeys/${id}`, { name }).then((r) => r.data),
+  remove: (id: number) => api.delete(`/account/passkeys/${id}`),
+  loginOptions: () => api.post<Record<string, unknown>>("/auth/passkey/options").then((r) => r.data),
+  login: (body: { id: string; clientDataJSON: string; authenticatorData: string; signature: string; userHandle: string | null }) =>
+    api.post<AuthResponse>("/auth/passkey/login", body).then((r) => r.data),
+};
+
+// ─── Recherche globale (barre du haut) ───────────────────────────────────────────
+export type SearchHitType = "ASSET" | "AGENT" | "COURSE" | "TRADER" | "NOTIFICATION" | "USER";
+export interface SearchHit { type: SearchHitType; title: string; subtitle: string | null; link: string; badge: string | null; score: number }
+export const searchApi = {
+  search: (q: string, signal?: AbortSignal) =>
+    api.get<{ query: string; hits: SearchHit[] }>("/search", { params: { q }, signal }).then((r) => r.data),
+};
+
+// ─── Messagerie de support (trader <-> administration) ─────────────────────────────
+export type SupportCategory = "FUNDS" | "TECHNICAL" | "ACCOUNT" | "OTHER";
+export type SupportStatus = "OPEN" | "ANSWERED" | "CLOSED";
+export interface SupportTicket {
+  id: number; subject: string; category: SupportCategory; status: SupportStatus; requestedAmount: number | null;
+  requestStatus: "PENDING" | "APPROVED" | "REJECTED" | null; createdAt: string; lastMessageAt: string; unread: boolean;
+  lastMessage: string | null; lastFromAdmin: boolean;
+  /** visibles par l'administration seulement */
+  userId: number | null; userName: string | null; userEmail: string | null; userAvatarUrl: string | null; userBalance: number | null;
+}
+export interface SupportMessage { id: number; fromAdmin: boolean; system: boolean; mine: boolean; authorName: string; body: string; createdAt: string }
+export interface SupportThread { ticket: SupportTicket; messages: SupportMessage[] }
+export const supportApi = {
+  mine: () => api.get<SupportTicket[]>("/support/tickets").then((r) => r.data),
+  create: (body: { subject: string; category: SupportCategory; body: string; amount?: number | null }) =>
+    api.post<SupportThread>("/support/tickets", body).then((r) => r.data),
+  open: (id: number) => api.get<SupportThread>(`/support/tickets/${id}`).then((r) => r.data),
+  reply: (id: number, body: string) => api.post<SupportThread>(`/support/tickets/${id}/messages`, { body }).then((r) => r.data),
+  unread: () => api.get<{ count: number }>("/support/unread").then((r) => r.data.count),
+  all: (status = "ALL", category = "ALL") =>
+    api.get<SupportTicket[]>("/admin/support/tickets", { params: { status, category } }).then((r) => r.data),
+  setStatus: (id: number, status: SupportStatus) => api.post<SupportThread>(`/admin/support/tickets/${id}/status`, { status }).then((r) => r.data),
+  decide: (id: number, approve: boolean, note: string) =>
+    api.post<SupportThread>(`/admin/support/tickets/${id}/decision`, { approve, note }).then((r) => r.data),
 };

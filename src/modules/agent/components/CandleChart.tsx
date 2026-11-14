@@ -23,6 +23,8 @@ interface Props {
   height?: number;
   /** position du JOUEUR (mode debutant) : prix d'entree moyen ; le stop suggere reprend la regle de l'agent */
   mine?: { entry: number } | null;
+  /** cache les ordres et l'avis de l'agent (niveaux Avance et Expert du jeu : on decide sans aide) */
+  hideAgent?: boolean;
 }
 
 interface Bar { day: number; o: number; h: number; l: number; c: number }
@@ -155,7 +157,8 @@ export default function CandleChart(props: Props) {
 
       // ---- position ouverte de l'agent : prix d'entree, stop-loss, objectif ----
       let entry: { day: number; price: number } | null = null;
-      if (today && today.agentPosition === 1) {
+      const hideAgent = propsRef.current.hideAgent === true;
+      if (today && today.agentPosition === 1 && !hideAgent) {
         for (let i = t; i >= 0; i--) {
           if (replay.days[i].event === 1) { entry = { day: i, price: replay.days[i].price }; break; }
           if (replay.days[i].event >= 2) break;
@@ -268,7 +271,7 @@ export default function CandleChart(props: Props) {
       }
 
       // marqueurs de l'IA (jours deja joues) ; etiquette seulement pour les 3 derniers
-      const events = replay.days.slice(0, t + 1).filter((d) => d.event > 0 && xOf(d.day) >= L && xOf(d.day) <= L + plotW);
+      const events = hideAgent ? [] : replay.days.slice(0, t + 1).filter((d) => d.event > 0 && xOf(d.day) >= L && xOf(d.day) <= L + plotW);
       events.forEach((d, k) => {
         const bar = bars.find((b) => b.day === d.day);
         if (!bar) return;
@@ -331,8 +334,8 @@ export default function CandleChart(props: Props) {
       ctx.fillStyle = COLORS.axis;
       ctx.font = `600 9px ${MONO.slice(5)}`;
       ctx.textAlign = "left";
-      ctx.fillText("SIGNAL IA", L + plotW + 8, laneY);
-      for (let i = Math.max(0, firstShown); i <= t; i++) {
+      ctx.fillText(hideAgent ? "SANS AIDE" : "SIGNAL IA", L + plotW + 8, laneY);
+      for (let i = Math.max(0, firstShown); i <= (hideAgent ? -1 : t); i++) {
         const d = replay.days[i];
         const x = xOf(i);
         ctx.globalAlpha = d.action === "HOLD" ? 0.35 : 0.35 + 0.65 * d.confidence;
@@ -374,7 +377,7 @@ export default function CandleChart(props: Props) {
         ctx.fillText(fmtPx(v), x, 12);
         x += ctx.measureText(fmtPx(v)).width + 12;
       }
-      if (today) {
+      if (today && !hideAgent) {
         const think = `${agentName} · ${today.action === "BUY" ? "ACHÈTE" : today.action === "SELL" ? "VEND" : "ATTEND"} · ${Math.round(today.confidence * 100)} %`;
         const col = ACTION_COLOR[today.action];
         ctx.font = `600 ${MONO}`;
