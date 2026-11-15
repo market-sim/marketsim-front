@@ -590,6 +590,7 @@ export const marketTicksApi = {
 };
 
 export type SentimentLabel = "POSITIVE" | "NEUTRAL" | "NEGATIVE";
+export type ModelSentimentStatus = "ANALYZED" | "UNAVAILABLE" | "INSUFFICIENT_DATA" | "UNSUPPORTED_LANGUAGE";
 
 /** Actualité financière importée avec score de sentiment calculé côté serveur. */
 export interface MarketNews {
@@ -613,6 +614,68 @@ export interface MarketNewsRequest {
   publishedAt: string; // ISO-8601 UTC
 }
 
+export interface ArticleModelSentiment {
+  newsId: number;
+  headline: string;
+  sentimentLabel: SentimentLabel;
+  positiveProbability: number;
+  negativeProbability: number;
+  neutralProbability: number;
+  sentimentScore: number;
+  modelName: string;
+  modelVersion: string;
+  analyzedAt: string;
+  status: "ANALYZED";
+  errorCode?: null;
+}
+
+export interface ModelSentimentResult {
+  newsId: number;
+  sentimentLabel: SentimentLabel | null;
+  positiveProbability: number | null;
+  negativeProbability: number | null;
+  neutralProbability: number | null;
+  sentimentScore: number | null;
+  modelName: string | null;
+  modelVersion: string | null;
+  analyzedAt: string;
+  status: ModelSentimentStatus;
+  errorCode: string | null;
+}
+
+export interface MarketSentimentSummary {
+  symbol: string;
+  periodDays: number;
+  periodStart: string;
+  periodEnd: string;
+  analyzedArticleCount: number;
+  positivePercentage: number;
+  negativePercentage: number;
+  neutralPercentage: number;
+  overallSentiment: SentimentLabel | null;
+  sentimentScore: number | null;
+  modelName: string;
+  modelVersion: string;
+  status: ModelSentimentStatus;
+  articles: ArticleModelSentiment[];
+}
+
+export interface MarketSentimentHistory {
+  symbol: string;
+  periodDays: number;
+  periodStart: string;
+  periodEnd: string;
+  status: ModelSentimentStatus;
+  points: Array<{
+    date: string;
+    analyzedArticleCount: number;
+    positivePercentage: number;
+    negativePercentage: number;
+    neutralPercentage: number;
+    sentimentScore: number;
+  }>;
+}
+
 export const marketNewsApi = {
   /** Toutes les actualités, ou filtrées par symbole si fourni. */
   list: (symbol?: string) =>
@@ -622,6 +685,113 @@ export const marketNewsApi = {
     api.post<MarketNews>("/market/news", req).then((r) => r.data),
   /** Supprimer un article (ADMIN). */
   remove: (id: number) => api.delete(`/market/news/${id}`),
+  analyze: (id: number) => api.post<ModelSentimentResult>(`/market/news/${id}/analyze`).then((r) => r.data),
+};
+
+export const marketSentimentApi = {
+  summary: (symbol: string, days = 30) =>
+    api.get<MarketSentimentSummary>("/market/sentiment", { params: { symbol, days } }).then((r) => r.data),
+  history: (symbol: string, days = 30) =>
+    api.get<MarketSentimentHistory>("/market/sentiment/history", { params: { symbol, days } }).then((r) => r.data),
+};
+
+export type PredictionDirection = "UP" | "DOWN" | "FLAT";
+export type PredictionOutcome = "CORRECT" | "INCORRECT" | null;
+
+export interface PredictionFanPoint { day: number; p10: number; p50: number; p90: number }
+
+/** Prédiction de tendance générée par le modèle interne (linear-momentum-v1). */
+export interface MarketPrediction {
+  id: number;
+  symbol: string;
+  direction: PredictionDirection;
+  confidence: number;       // 0.0–1.0, jamais null
+  currentPrice: number;     // prix au moment de la génération
+  targetPrice: number;      // prix cible projeté, toujours positif
+  horizonDays: number;
+  generatedAt: string;      // ISO-8601 UTC, jamais null
+  dataAsOf: string;         // ISO-8601 UTC, jamais null (cutoff des données)
+  modelVersion: string;     // jamais null
+  modelName?: string | null;
+  dataSource?: string | null;
+  dataHash?: string | null;
+  dataFrom?: string | null;
+  dataTo?: string | null;
+  dataPoints?: number | null;
+  mae?: number | null;
+  rmse?: number | null;
+  mape?: number | null;
+  evaluationPoints?: number | null;
+  fanP10?: number | null;
+  fanP90?: number | null;
+  fanJson?: string | null;
+  candidateMetricsJson?: string | null;
+  sentimentScore?: number | null;
+  sentimentContribution?: number | null;
+  status?: "GENERATED" | "RESOLVED" | string | null;
+  outcome: PredictionOutcome;
+  resolvedAt: string | null;
+}
+
+export const predictionsApi = {
+  /** Toutes les prédictions, ou filtrées par symbole si fourni. */
+  list: (symbol?: string) =>
+    api.get<MarketPrediction[]>("/market/predictions", { params: symbol ? { symbol } : {} }).then((r) => r.data),
+  /** Récupère une prédiction par id. */
+  get: (id: number) => api.get<MarketPrediction>(`/market/predictions/${id}`).then((r) => r.data),
+  /** Modèles de prédiction disponibles. */
+  models: () => api.get<Array<{ id: string; name: string; version: string; description: string; available: boolean }>>("/market/predictions/models").then((r) => r.data),
+  /** Métriques d'évaluation d'une prédiction. */
+  evaluation: (id: number) => api.get<{
+    predictionId: number; modelName: string; modelVersion: string; evaluationPoints: number | null;
+    mae: number | null; rmse: number | null; mape: number | null; status: string;
+  }>(`/market/predictions/${id}/evaluation`).then((r) => r.data),
+  /** Backtesting & calibration agrégés (optionnellement filtré par symbole). */
+  backtest: (symbol?: string) => api.get<{
+    total: number; resolved: number; pending: number;
+    successRate: number | null; brierScore: number | null;
+    byDirection: Record<string, { total: number; correct: number; rate: number }>;
+    calibration: { from: number; to: number; count: number; avgConfidence: number; actualRate: number }[];
+  }>(`/market/predictions/backtest`, { params: symbol ? { symbol } : {} }).then((r) => r.data),
+  /** Génère et persiste une nouvelle prédiction (ADMIN). */
+  generate: (symbol: string, horizon?: number) =>
+    api.post<MarketPrediction>("/market/predictions/generate", null, { params: { symbol, ...(horizon ? { horizon } : {}) } }).then((r) => r.data),
+};
+
+export type MarketHistoryStatus = "REAL" | "CACHED" | "STALE" | "UNAVAILABLE";
+export type MarketHistoryPeriod = "1M" | "3M" | "6M" | "1Y" | "ALL";
+
+export interface MarketHistoryPoint {
+  date: string;
+  close: number;
+}
+
+export interface MarketHistoryDto {
+  symbol: string;
+  name: string | null;
+  type: Asset["type"] | null;
+  source: string | null;
+  status: MarketHistoryStatus;
+  lastUpdated: string | null;
+  from: string | null;
+  to: string | null;
+  points: number;
+  firstClose: number | null;
+  lastClose: number | null;
+  changePct: number | null;
+  dataHash: string | null;
+  period: MarketHistoryPeriod;
+  prices: MarketHistoryPoint[];
+  message: string | null;
+}
+
+export const marketHistoryApi = {
+  /** Historique de cours réels d'un instrument, enrichi du statut de fraîcheur et filtré par période. */
+  get: (symbol: string, period?: MarketHistoryPeriod) =>
+    api.get<MarketHistoryDto>("/market/history", { params: { symbol, period } }).then((r) => r.data),
+  /** Re-télécharge l'historique depuis le fournisseur distant (ADMIN). */
+  refresh: (symbol: string) =>
+    api.post<MarketHistoryDto>("/market/history/refresh", null, { params: { symbol } }).then((r) => r.data),
 };
 
 // ─── Module 6 : Agent de Trading Intelligent ─────────────────────────────────
