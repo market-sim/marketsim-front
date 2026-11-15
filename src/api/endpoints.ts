@@ -54,16 +54,36 @@ export const ordersApi = {
 };
 
 // ─── Module 3 : Analyse Financiere & Backtesting ─────────────────────────────
+// Unites : tous les taux sont des fractions (0.001 = 0,1 %), sauf Strategy.winRate et Strategy.maxDrawdown
+// qui sont en pourcentage (resume du dernier backtest). Les dates sont au format AAAA-MM-JJ.
+export type StrategyType = "SMA_CROSS" | "EMA_CROSS" | "RSI" | "MACD" | "BOLLINGER" | "BUY_AND_HOLD";
+
+/** Parametres d'une strategie : seuls ceux qui concernent son type sont renseignes. */
+export interface StrategyParams {
+  fastPeriod?: number | null;
+  slowPeriod?: number | null;
+  signalPeriod?: number | null;
+  period?: number | null;
+  buyBelow?: number | null;
+  sellAbove?: number | null;
+  bandK?: number | null;
+}
+
 export interface Strategy {
   id?: number;
   name: string;
-  description?: string;
-  indicators?: string;
+  description?: string | null;
+  /** texte genere par le back a partir du type, ex. "SMA(20),SMA(50)" */
+  indicators?: string | null;
   status?: "ACTIVE" | "PAUSED";
+  /** absent sur les anciennes strategies ; obligatoire pour lancer un backtest */
+  type?: StrategyType | null;
+  params?: StrategyParams | null;
   sharpe?: number | null;
   winRate?: number | null;
   maxDrawdown?: number | null;
   trades?: number | null;
+  createdAt?: string;
 }
 
 export const strategiesApi = {
@@ -71,6 +91,179 @@ export const strategiesApi = {
   create: (s: Strategy) => api.post<Strategy>("/analysis/strategies", s).then((r) => r.data),
   update: (id: number, s: Strategy) => api.put<Strategy>(`/analysis/strategies/${id}`, s).then((r) => r.data),
   remove: (id: number) => api.delete(`/analysis/strategies/${id}`),
+};
+
+// --- Indicateurs techniques (calcules sur les clotures) ---
+/** Une valeur par seance ; null pendant la periode de chauffe de l'indicateur. */
+export type IndicatorValues = (number | null)[];
+
+export interface IndicatorSeries {
+  symbol: string;
+  source: string;
+  dates: string[];
+  closes: number[];
+  /** une courbe par periode demandee, ex. { "20": [...], "50": [...] } */
+  sma?: Record<string, IndicatorValues>;
+  ema?: Record<string, IndicatorValues>;
+  rsi?: { period: number; values: IndicatorValues };
+  macd?: { fast: number; slow: number; signal: number; macd: IndicatorValues; signalLine: IndicatorValues; histogram: IndicatorValues };
+  bollinger?: { period: number; k: number; upper: IndicatorValues; middle: IndicatorValues; lower: IndicatorValues };
+}
+
+export interface IndicatorQuery {
+  sma?: number[];
+  ema?: number[];
+  rsi?: number;
+  /** [rapide, lente, signal] */
+  macd?: [number, number, number];
+  /** [periode, multiplicateur k] */
+  bollinger?: [number, number];
+  from?: string;
+  to?: string;
+}
+
+export const indicatorsApi = {
+  /** Sans aucun indicateur demande, le back applique ses valeurs par defaut. */
+  get: (symbol: string, q: IndicatorQuery = {}) =>
+    api.get<IndicatorSeries>("/analysis/indicators", {
+      params: {
+        symbol,
+        sma: q.sma?.join(","),
+        ema: q.ema?.join(","),
+        rsi: q.rsi,
+        macd: q.macd?.join(","),
+        bollinger: q.bollinger?.join(","),
+        from: q.from || undefined,
+        to: q.to || undefined,
+      },
+    }).then((r) => r.data),
+};
+
+// --- Backtests ---
+/** Seuls strategyId et symbol sont obligatoires ; le back complete le reste avec ses valeurs par defaut. */
+export interface BacktestRequest {
+  strategyId: number;
+  symbol: string;
+  from?: string;
+  to?: string;
+  initialCapital?: number;
+  feeRate?: number;
+  slippage?: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  positionFraction?: number;
+  /** date de coupure entrainement / test */
+  splitDate?: string;
+}
+
+export interface BacktestSettings {
+  initialCapital: number;
+  feeRate: number;
+  slippage: number;
+  stopLoss: number | null;
+  takeProfit: number | null;
+  positionFraction: number;
+}
+
+/** null = metrique non calculable (aucun trade, aucune perte, aucun drawdown...). */
+export interface BacktestMetrics {
+  finalCapital: number;
+  totalReturn: number;
+  annualizedReturn: number | null;
+  volatility: number;
+  sharpe: number;
+  sortino: number | null;
+  calmar: number | null;
+  maxDrawdown: number;
+  maxDrawdownDays: number;
+  maxDrawdownPeak: string | null;
+  maxDrawdownTrough: string | null;
+  maxDrawdownRecovery: string | null;
+  tradeCount: number;
+  winRate: number | null;
+  profitFactor: number | null;
+  averageWin: number | null;
+  averageLoss: number | null;
+  averageWinReturn: number | null;
+  averageLossReturn: number | null;
+  averageHoldingDays: number | null;
+  exposure: number;
+  buyHoldReturn: number;
+  excessReturn: number;
+}
+
+export type ExitReason = "SIGNAL" | "STOP_LOSS" | "TAKE_PROFIT" | "END_OF_PERIOD";
+
+/** Un aller-retour complet : achat puis vente. */
+export interface BacktestTrade {
+  entryDate: string;
+  entryPrice: number;
+  exitDate: string;
+  exitPrice: number;
+  quantity: number;
+  invested: number;
+  pnl: number;
+  returnRate: number;
+  fees: number;
+  bars: number;
+  holdingDays: number;
+  reason: ExitReason;
+}
+
+export interface BacktestSegment { from: string; to: string; metrics: BacktestMetrics }
+
+/** Quatre tableaux de meme taille : un point par seance. */
+export interface BacktestCurves { dates: string[]; equity: number[]; buyHold: number[]; drawdown: number[] }
+
+/** Ligne de l'historique (sans les courbes ni les trades). */
+export interface BacktestSummary {
+  id: number;
+  strategyId: number;
+  strategyName: string;
+  strategyType: StrategyType;
+  symbol: string;
+  from: string;
+  to: string;
+  splitDate: string | null;
+  createdAt: string;
+  totalReturn: number | null;
+  annualizedReturn: number | null;
+  sharpe: number | null;
+  maxDrawdown: number | null;
+  tradeCount: number | null;
+  winRate: number | null;
+  buyHoldReturn: number | null;
+  excessReturn: number | null;
+}
+
+export interface BacktestDetail {
+  id: number;
+  strategyId: number;
+  strategyName: string;
+  strategyType: StrategyType;
+  params?: StrategyParams;
+  symbol: string;
+  from: string;
+  to: string;
+  splitDate?: string;
+  createdAt: string;
+  dataSource: string;
+  dataHash: string;
+  settings: BacktestSettings;
+  metrics: BacktestMetrics;
+  /** presents seulement si une date de coupure a ete fournie */
+  train?: BacktestSegment;
+  test?: BacktestSegment;
+  curves: BacktestCurves;
+  trades: BacktestTrade[];
+}
+
+export const backtestsApi = {
+  run: (req: BacktestRequest) => api.post<BacktestDetail>("/analysis/backtests", req).then((r) => r.data),
+  list: (strategyId?: number) =>
+    api.get<BacktestSummary[]>("/analysis/backtests", { params: { strategyId } }).then((r) => r.data),
+  get: (id: number) => api.get<BacktestDetail>(`/analysis/backtests/${id}`).then((r) => r.data),
+  remove: (id: number) => api.delete(`/analysis/backtests/${id}`),
 };
 
 // ─── Module 4 : Formation & Pedagogie ────────────────────────────────────────
