@@ -1,24 +1,27 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
-import { FlaskConical, History, LineChart, ListChecks } from "lucide-react";
-import { assetsApi, strategiesApi, type Asset, type BacktestDetail, type Strategy } from "../../api/endpoints";
+import { FlaskConical, GitCompare, History, LineChart, ListChecks } from "lucide-react";
+import { assetsApi, strategiesApi, type Asset, type BacktestComparison, type BacktestDetail, type Strategy } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../app/components/ui/tabs";
 import { useCoachFocus } from "../coach/coachFocus";
 import { DEFAULT_BACKTEST_FORM, type BacktestFormValues } from "./backtestForm";
 import BacktestTab from "./components/BacktestTab";
+import ComparisonTab from "./components/ComparisonTab";
 import HistoryTab from "./components/HistoryTab";
 import StrategiesTab from "./components/StrategiesTab";
 import TechnicalTab from "./components/TechnicalTab";
 import { DEFAULT_TECH, type TechSettings } from "./technical";
+import { DEFAULT_COMPARISON_FORM, type ComparisonFormValues } from "./comparison";
 
-type TabId = "technique" | "strategies" | "backtest" | "historique";
+type TabId = "technique" | "strategies" | "backtest" | "historique" | "comparaison";
 
 const TABS: { id: TabId; label: string; Icon: typeof LineChart }[] = [
   { id: "technique", label: "Analyse technique", Icon: LineChart },
   { id: "strategies", label: "Stratégies", Icon: ListChecks },
   { id: "backtest", label: "Backtest", Icon: FlaskConical },
   { id: "historique", label: "Historique", Icon: History },
+  { id: "comparaison", label: "Comparaison", Icon: GitCompare },
 ];
 
 /** Meme apparence que les onglets du module Agent : pastille bleue sur l'onglet actif. */
@@ -51,6 +54,8 @@ export default function AnalysisPage() {
   const [tech, setTech] = useState<TechSettings>(DEFAULT_TECH);
   const [form, setForm] = useState<BacktestFormValues>(DEFAULT_BACKTEST_FORM);
   const [result, setResult] = useState<BacktestDetail | null>(null);
+  const [comparisonForm, setComparisonForm] = useState<ComparisonFormValues>(DEFAULT_COMPARISON_FORM);
+  const [comparison, setComparison] = useState<BacktestComparison | null>(null);
 
   const loadStrategies = useCallback(async () => {
     setStrategiesLoading(true);
@@ -73,6 +78,7 @@ export default function AnalysisPage() {
         const first = list[0]?.symbol ?? "";
         setTech((t) => (t.symbol ? t : { ...t, symbol: first }));
         setForm((f) => (f.symbol ? f : { ...f, symbol: first }));
+        setComparisonForm((f) => (f.symbol ? f : { ...f, symbol: first }));
       })
       .catch((e) => setAssetsError(errorMessage(e)))
       .finally(() => setAssetsLoading(false));
@@ -88,7 +94,7 @@ export default function AnalysisPage() {
 
   return (
     <Tabs value={tab} onValueChange={(v) => go(v as TabId)} className="gap-5">
-      <TabsList className="h-auto w-fit flex-wrap justify-start gap-1 rounded-xl border border-border/60 bg-white p-1">
+      <TabsList className="h-auto w-full max-w-full flex-wrap justify-start gap-1 rounded-xl border border-border/60 bg-white p-1 dark:bg-card sm:w-fit">
         {TABS.map(({ id, label, Icon }) => (
           <TabsTrigger key={id} value={id} className={TAB_CLASS}><Icon className="w-3.5 h-3.5" />{label}</TabsTrigger>
         ))}
@@ -114,6 +120,13 @@ export default function AnalysisPage() {
         <HistoryTab strategies={strategies} openId={openId} onOpen={(id) => go("historique", id)}
           onDeleted={(id) => { if (result?.id === id) setResult(null); loadStrategies(); }}
           onGoToBacktest={() => go("backtest")} />
+      </TabsContent>
+
+      <TabsContent value="comparaison">
+        <ComparisonTab strategies={strategies} strategiesLoading={strategiesLoading} strategiesError={strategiesError}
+          assets={assets} assetsLoading={assetsLoading} assetsError={assetsError}
+          values={comparisonForm} onValuesChange={setComparisonForm} result={comparison}
+          onResult={setComparison} onGoToStrategies={() => go("strategies")} onReloadStrategies={loadStrategies} />
       </TabsContent>
     </Tabs>
   );

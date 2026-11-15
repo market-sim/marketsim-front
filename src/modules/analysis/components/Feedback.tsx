@@ -36,7 +36,7 @@ export function useReturnFocus() {
 /** Message d'erreur (le plus souvent celui renvoye par le back), avec un bouton pour reessayer. */
 export function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
+    <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
       <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
       <span className="flex-1">{message}</span>
       {onRetry && (
@@ -66,7 +66,7 @@ export function Field({ label, htmlFor, hint, error, className = "", children }:
     <div className={className}>
       <Label htmlFor={htmlFor} className="block text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-1">{label}</Label>
       {children}
-      {error ? <p className="text-[11px] text-red-600 mt-1">{error}</p> : hint ? <p className="text-[11px] text-muted-foreground mt-1">{hint}</p> : null}
+      {error ? <p className="text-[11px] text-red-600 mt-1 dark:text-red-400">{error}</p> : hint ? <p className="text-[11px] text-muted-foreground mt-1">{hint}</p> : null}
     </div>
   );
 }

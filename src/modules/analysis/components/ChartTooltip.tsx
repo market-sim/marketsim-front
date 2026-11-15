@@ -27,7 +27,7 @@ export default function ChartTooltip({ active, label, payload, series }: Props) 
   const rows = series.filter((s) => typeof values.get(s.key) === "number");
   if (rows.length === 0) return null;
   return (
-    <div className="rounded-lg border border-border bg-white px-3 py-2 shadow-sm">
+    <div className="rounded-lg border border-border bg-white px-3 py-2 shadow-sm dark:bg-card">
       <p className="text-[10px] text-muted-foreground mb-1" style={MONO}>{label}</p>
       {rows.map((s) => (
         <div key={s.key} className="flex items-center gap-2 text-[11px] leading-5">

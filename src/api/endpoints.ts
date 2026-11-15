@@ -258,8 +258,44 @@ export interface BacktestDetail {
   trades: BacktestTrade[];
 }
 
+export interface BacktestComparisonRequest extends Omit<BacktestRequest, "strategyId"> {
+  strategyIds: number[];
+}
+
+export interface BacktestComparisonCurve {
+  dates: string[];
+  equity: number[];
+  drawdown: number[];
+}
+
+export interface StrategyComparison {
+  strategyId: number;
+  strategyName: string;
+  strategyType: StrategyType;
+  params: StrategyParams;
+  metrics: BacktestMetrics;
+  train?: BacktestSegment;
+  test?: BacktestSegment;
+  curves: BacktestComparisonCurve;
+}
+
+export interface BacktestComparison {
+  symbol: string;
+  from: string;
+  to: string;
+  splitDate: string | null;
+  dataSource: string;
+  dataHash: string;
+  settings: BacktestSettings;
+  dates: string[];
+  buyHold: number[];
+  strategies: StrategyComparison[];
+}
+
 export const backtestsApi = {
   run: (req: BacktestRequest) => api.post<BacktestDetail>("/analysis/backtests", req).then((r) => r.data),
+  compare: (req: BacktestComparisonRequest) =>
+    api.post<BacktestComparison>("/analysis/backtests/compare", req).then((r) => r.data),
   list: (strategyId?: number) =>
     api.get<BacktestSummary[]>("/analysis/backtests", { params: { strategyId } }).then((r) => r.data),
   get: (id: number) => api.get<BacktestDetail>(`/analysis/backtests/${id}`).then((r) => r.data),
