@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { tickerApi, type TickerQuote } from "../api/endpoints";
 
-const REFRESH_MS = 60_000;
+// les actifs tradables (AAPL, BTC, OR...) affichent le prix du moteur du module 5, qui bouge toutes les 3 s
+const REFRESH_MS = 5_000;
 
 function formatPrice(q: TickerQuote) {
   const digits = q.category === "FOREX" ? 4 : q.price >= 1000 ? 2 : 2;
@@ -25,7 +26,8 @@ function Item({ q }: { q: TickerQuote }) {
 
 /**
  * Bandeau defilant des marches mondiaux (indices, actions, cryptos, devises, or, petrole).
- * Cours reels via le backend (Yahoo Finance / CoinGecko), rafraichis chaque minute ; pause au survol.
+ * Cours reels via le backend (Yahoo Finance / CoinGecko) ; pour les actifs tradables, prix du moteur de prix
+ * (ancre sur ces cours reels), le meme que dans le trading. Rafraichi toutes les 5 s ; pause au survol.
  */
 export default function MarketTicker() {
   const [quotes, setQuotes] = useState<TickerQuote[]>([]);

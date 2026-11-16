@@ -36,10 +36,13 @@ import {
 import { fmt, pct, priceDisplay, MONO, DISPLAY, SignalBadge, SectionHeader, CardShell } from "../../shared/ui";
 import type { Signal, Sentiment, Direction, BankStatus } from "../../shared/ui";
 import { predictions, newsItems } from "./mockData";
+import LiveQuotes from "./LiveQuotes";
 
 export default function MarketPage() {
   return (
     <div className="space-y-5">
+      <LiveQuotes />
+
       <div>
         <SectionHeader
           title="AI Price Predictions"

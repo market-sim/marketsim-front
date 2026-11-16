@@ -7,6 +7,7 @@ import {
   type Asset, type EquityPoint, type OrderSide, type OrderType, type Portfolio, type PortfolioRisk, type RiskAssessment,
   type TradeOrder, type UpdateOrderRequest,
 } from "../../api/endpoints";
+import { quotePrice } from "../market/LiveQuotes";
 import { errorMessage } from "../../api/client";
 import {
   buildOrderRequest, buildRiskRequest, distancePct, filterHistory, formatDistance, historyReason, riskStyle, signed, splitOrders,
@@ -59,7 +60,9 @@ export default function TradingPage() {
   const refresh = useCallback(async () => {
     try {
       // GET /orders et /portfolio declenchent aussi un balayage SL/TP/LIMIT cote serveur
-      const [o, p, r, h] = await Promise.all([ordersApi.list(), portfolioApi.get(), riskApi.portfolio(), portfolioApi.history()]);
+      const [o, p, r, h, a] = await Promise.all([ordersApi.list(), portfolioApi.get(), riskApi.portfolio(), portfolioApi.history(),
+        assetsApi.list()]);
+      setAssets(a);   // le prix affiche suit le moteur de prix du module 5
       setOrders(o);
       setPortfolio(p);
       setPRisk(r);
@@ -75,7 +78,7 @@ export default function TradingPage() {
       if (list.length) setForm((f) => ({ ...f, symbol: f.symbol || list[0].symbol }));
     }).catch((e) => setError(apiError(e)));
     refresh();
-    const timer = setInterval(refresh, 5000);   // affiche les stop-loss / take-profit declenches par le moteur
+    const timer = setInterval(refresh, 3000);   // prix du moteur (3 s) et stop-loss / take-profit declenches
     return () => clearInterval(timer);
   }, [refresh]);
 
@@ -184,6 +187,15 @@ export default function TradingPage() {
               <select value={form.symbol} onChange={(e) => set("symbol", e.target.value)} className={inputClass}>
                 {assets.map((a) => <option key={a.symbol} value={a.symbol}>{a.symbol} — {a.name}</option>)}
               </select>
+              {asset && (
+                <p className="mt-1.5 flex items-baseline gap-2 text-[12px] text-muted-foreground">
+                  Cours actuel
+                  <span className="font-semibold text-foreground tabular-nums" data-testid="order-price">{quotePrice(asset)}</span>
+                  <span className={`tabular-nums ${asset.changePct >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                    {asset.changePct >= 0 ? "+" : ""}{asset.changePct.toFixed(2).replace(".", ",")} %
+                  </span>
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -203,7 +215,7 @@ export default function TradingPage() {
               <div>
                 <label className={labelClass}>Prix limite / déclencheur</label>
                 <input type="number" min="0" step="any" value={form.limitPrice} onChange={(e) => set("limitPrice", e.target.value)} className={inputClass}
-                  placeholder={asset ? `Cours actuel ${Number(asset.price)}` : ""} />
+                  placeholder={asset ? `Cours actuel ${quotePrice(asset)}` : ""} />
                 <p className="text-[10px] text-muted-foreground mt-1">
                   {form.orderType === "LIMIT"
                     ? (form.side === "BUY" ? "Exécuté si le prix descend au niveau ou en dessous." : "Exécuté si le prix monte au niveau ou au-dessus.")

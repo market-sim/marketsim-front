@@ -553,6 +553,13 @@ export const assetsApi = {
   remove: (id: number) => api.delete(`/market/assets/${id}`),
 };
 
+/** Module 5 : flux de cotations enregistre par le moteur de prix (un point par minute et par actif). */
+export interface PriceTick { at: string; price: number; anchored: boolean }
+export const marketTicksApi = {
+  list: (symbol: string, hours = 6) =>
+    api.get<PriceTick[]>("/market/ticks", { params: { symbol, hours } }).then((r) => r.data),
+};
+
 // ─── Module 6 : Agent de Trading Intelligent ─────────────────────────────────
 export type AgentStrategy = "MOMENTUM" | "MEAN_REVERSION" | "Q_LEARNING";
 export type AgentAction = "BUY" | "SELL" | "HOLD";

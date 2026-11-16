@@ -55,7 +55,12 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   // Module 5 : cotations venant du backend (GET /api/market/assets)
   const [assets, setAssets] = useState<Asset[]>([]);
-  useEffect(() => { assetsApi.list().then(setAssets).catch(() => setAssets([])); }, []);
+  useEffect(() => {
+    const load = () => assetsApi.list().then(setAssets).catch(() => setAssets([]));
+    load();
+    const id = window.setInterval(load, 5000);   // prix du moteur de prix (module 5)
+    return () => window.clearInterval(id);
+  }, []);
   // Module 2 : portefeuille virtuel reel (GET /api/trading/portfolio)
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   // (pas pour l'admin : il n'a ni portefeuille ni score)
