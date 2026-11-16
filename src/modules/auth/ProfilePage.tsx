@@ -1,10 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link } from "react-router";
-import { LEVEL_COLOR, LEVEL_LABEL } from "../../progression/ProgressionContext";
-import type { TraderLevel } from "../../api/endpoints";
 import PasswordStrength, { passwordProblem } from "../../auth/PasswordStrength";
 import { useAuth } from "../../auth/AuthContext";
 import { authApi, type SecurityScore, type UserLevelAssessment } from "../../api/endpoints";
+import TraderLevels from "./TraderLevels";
 import { errorMessage } from "../../api/client";
 import { CardShell, DISPLAY } from "../../shared/ui";
 import { inputClass, labelClass } from "./AuthLayout";
@@ -113,31 +111,14 @@ export default function ProfilePage() {
     <CardShell className="p-6">
       <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>Niveau de trader</h3>
       <p className="text-[11px] text-muted-foreground mt-1 mb-3">
-        Calculé par un modèle à partir de votre activité et de vos ordres. Il ne change ni le rôle ni l&apos;accès au compte.
+        Deux niveaux calculés séparément : l&apos;activité (modèle IA du module 1) et le trading (jeu de progression). Ils ne changent ni le rôle ni l&apos;accès au compte.
       </p>
       {levelLoading && <p className="text-xs text-muted-foreground">Chargement du niveau...</p>}
       {!levelLoading && levelError && <p className="text-xs text-red-600 dark:text-red-400">{levelError}</p>}
       {!levelLoading && !levelError && !level && (
         <p className="text-xs text-muted-foreground">Aucun niveau disponible.</p>
       )}
-      {!levelLoading && level?.insufficientEvidence && (
-        <p className="text-[12px] text-foreground">
-          Activité insuffisante ({level.successfulLoginCount} connexion{level.successfulLoginCount > 1 ? "s" : ""} réussie{level.successfulLoginCount > 1 ? "s" : ""}). Le compte reste Débutant — aucun niveau n&apos;est inventé.
-        </p>
-      )}
-      {!levelLoading && level?.reasonCodes.includes("TRADING_PROGRESSION") && (
-        <p className="text-[12px] text-foreground">
-          <b style={{ color: LEVEL_COLOR[level.level as TraderLevel] }}>{LEVEL_LABEL[level.level as TraderLevel] ?? level.level}</b>
-          {" "}· calculé à partir de ton portefeuille du Jeu de trading et de ta façon de trader.{" "}
-          <Link to="/progression" className="text-blue-600 font-medium">Voir ma progression</Link>
-        </p>
-      )}
-      {!levelLoading && level && !level.insufficientEvidence && !level.reasonCodes.includes("TRADING_PROGRESSION") && (
-        <p className="text-[12px] text-foreground">
-          {level.level ?? "—"} · score {level.score ?? "—"} · {level.reasonCodes.join(", ") || "—"}
-          {level.modelVersion ? ` · ${level.modelVersion}` : ""}
-        </p>
-      )}
+      {!levelLoading && level && <TraderLevels level={level} />}
     </CardShell>
     <CardShell className="p-6">
       <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>Score de sécurité</h3>

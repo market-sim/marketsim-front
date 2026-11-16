@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router";
 import { ArrowDownWideNarrow, Download, KeyRound, LogOut, Pencil, Search, Trash2, UserPlus } from "lucide-react";
 import EditBalanceDialog from "./EditBalanceDialog";
 import { adminApi, type AdminTraderScore, type Role, type SecurityScore, type SessionView, type TemporaryPassword, type TraderLevel, type User, type UserLevelAssessment } from "../../api/endpoints";
+import TraderLevels from "../auth/TraderLevels";
 import { inputClass } from "../auth/AuthLayout";
 
 /** Champs compacts de la barre de filtres (sans la largeur pleine de inputClass). */
@@ -404,13 +405,7 @@ export default function AdminUsersPage() {
             <p className="text-xs text-muted-foreground">Aucun niveau pour cet utilisateur.</p>
           )}
           {!levelLoading && levelError && <p className="text-xs text-red-600 dark:text-red-400">{levelError}</p>}
-          {!levelLoading && level && level.userId === selected.id && (
-            <p className="text-[12px] text-foreground">
-              {level.insufficientEvidence
-                ? `Niveau : activité insuffisante (${level.successfulLoginCount} connexion(s) réussie(s)). Reste Débutant.`
-                : `Niveau ${level.level ?? "—"} · score ${level.score ?? "—"} · ${level.reasonCodes.join(", ") || "—"}`}
-            </p>
-          )}
+          {!levelLoading && level && level.userId === selected.id && <TraderLevels level={level} admin />}
           {sessions && (
             <p className="text-[12px] text-foreground">
               Sessions actives : {sessions.length}

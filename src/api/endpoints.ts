@@ -206,6 +206,16 @@ export interface UserLevelAssessment {
   reasonCodes: string[];
   modelVersion: string | null;
   computedAt: string;
+  /** Niveau d'activite du modele IA (module 1) et son score ; null si activite insuffisante. */
+  activityLevel?: TraderLevel | null;
+  activityScore?: number | null;
+  /** Niveau du jeu de progression et son score de competence ; null sans profil de trader. */
+  tradingLevel?: TraderLevel | null;
+  tradingScore?: number | null;
+  /** D'ou viennent level et score. */
+  levelSource?: "TRADING" | "ACTIVITY";
+  /** Regle qui choisit le niveau affiche. */
+  displayRule?: string;
 }
 
 export interface AdminStats {
