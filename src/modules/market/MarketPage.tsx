@@ -325,12 +325,16 @@ export default function MarketPage() {
     setHistoryRefreshing(true);
     marketHistoryApi
       .refresh(selectedSymbol)
-      .then((dto) => {
-        setHistory(dto);
+      .then(() => {
+        // recharge la periode affichee (1M, 3M, 6M, 1A, Max) avec les cours tout juste telecharges
+        loadHistory(selectedSymbol, selectedPeriod);
         setHistoryRefreshing(false);
       })
       .catch((e) => {
-        setHistoryError(errorMessage(e));
+        const status = (e as { response?: { status?: number } })?.response?.status;
+        setHistoryError(status === 403
+          ? "Le serveur qui tourne est une ancienne version (l'actualisation y était réservée à l'admin) : relance Lancer-MarketSim.bat."
+          : errorMessage(e));
         setHistoryRefreshing(false);
       });
   };
@@ -588,7 +592,8 @@ export default function MarketPage() {
               ))}
             </div>
 
-            {user?.role === "ADMIN" && (
+            {/* actualisation de l'historique ouverte a tout utilisateur connecte */}
+            {user && (
               <button
                 onClick={handleRefreshHistory}
                 disabled={historyRefreshing || historyLoading}
