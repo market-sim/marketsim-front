@@ -48,6 +48,7 @@ import {
 } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
 import { useAuth } from "../../auth/AuthContext";
+import { quotePrice } from "./LiveQuotes";
 
 // ─── Type badges ────────────────────────────────────────────────────────────
 const TYPE_STYLE: Record<Asset["type"], string> = {
@@ -282,6 +283,13 @@ export default function MarketPage() {
     loadBacktest();
   }, []);
 
+  // Prix du moteur de prix (pas toutes les 3 s) relus chaque seconde, sans recharger le reste de la page :
+  // la page Marche montre le meme prix que le formulaire d'ordre et le bandeau.
+  useEffect(() => {
+    const id = window.setInterval(() => { assetsApi.list().then(setAssets).catch(() => {}); }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
   useEffect(() => {
     if (selectedSymbol) {
       loadNews(selectedSymbol);
@@ -413,8 +421,8 @@ export default function MarketPage() {
 
                       {/* Price + change */}
                       <div className="flex items-end justify-between">
-                        <span className="text-base font-semibold text-foreground" style={MONO}>
-                          {priceDisplay(Number(asset.price))}
+                        <span className="text-base font-semibold text-foreground" style={MONO} data-testid={`quote-${asset.symbol}`}>
+                          {quotePrice(asset)}
                         </span>
                         <span
                           className={`text-[12px] font-bold ${
@@ -1085,7 +1093,6 @@ export default function MarketPage() {
                     ? "bg-red-100 text-red-600"
                     : "bg-amber-100 text-amber-700";
 
-                const fan = (() => { try { return pred.fanJson ? (JSON.parse(pred.fanJson) as { day: number; p10: number; p50: number; p90: number }[]) : null; } catch { return null; } })();
 const relativeTime = (() => {
                   const diff = Math.round(
                     (Date.now() - new Date(item.publishedAt).getTime()) / 60000
@@ -1123,6 +1130,9 @@ const relativeTime = (() => {
                       )}
                       <div className="flex items-center gap-3 mt-1 flex-wrap">
                         <span className="text-[10px] font-medium text-blue-600">{item.source}</span>
+                        {item.dataStatus === "MANUAL" && (
+                          <span className="text-[10px] font-semibold rounded px-1.5 py-0.5 bg-amber-100 text-amber-800" title="Article saisi à la main (admin), pas importé d'un fournisseur réel">import manuel</span>
+                        )}
                         <span className="text-[10px] text-muted-foreground">→ {item.symbol}</span>
                         <span className="text-[10px] text-muted-foreground">{relativeTime}</span>
                         <span

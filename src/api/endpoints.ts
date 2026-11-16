@@ -603,6 +603,10 @@ export interface MarketNews {
   sentimentScore: number; // −1.0 … +1.0, jamais null
   sentimentLabel: SentimentLabel;
   importedAt: string;    // ISO-8601 UTC
+  /** Fournisseur d'origine : YAHOO_FINANCE, GOOGLE_NEWS, FINNHUB ou MANUAL (import de l'admin). */
+  provider?: string;
+  /** REAL (fournisseur reel), CACHED ou MANUAL. */
+  dataStatus?: string;
 }
 
 /** Corps envoyé par l'admin pour importer un article (le sentiment est calculé côté serveur). */
