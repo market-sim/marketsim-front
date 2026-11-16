@@ -295,7 +295,11 @@ export default function MarketPage() {
         setGeneratingPred(false);
       })
       .catch((e) => {
-        setGeneratePredError(errorMessage(e));
+        // 403 : serveur lance avant l'ouverture de Generate aux traders -> le dire clairement
+        const status = (e as { response?: { status?: number } })?.response?.status;
+        setGeneratePredError(status === 403
+          ? "Le serveur qui tourne est une ancienne version (Generate y était réservé à l'admin). Ferme les fenêtres « MarketSim … » et relance Lancer-MarketSim.bat."
+          : errorMessage(e));
         setGeneratingPred(false);
       });
   };
