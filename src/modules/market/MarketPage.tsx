@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import {
   RefreshCw,
   Newspaper,
@@ -17,6 +17,9 @@ import {
   Area,
   LineChart,
   Line,
+  ComposedChart,
+  Scatter,
+  Legend,
   XAxis,
   YAxis,
   Tooltip,
@@ -193,6 +196,67 @@ export default function MarketPage() {
       .catch((e) => setSentimentError(errorMessage(e)))
       .finally(() => setAnalyzingArticleIds((ids) => ids.filter((id) => id !== newsId)));
   };
+
+  // Analyse FinBERT automatique des actualites pas encore analysees (une a la fois, 30 au plus) : la courbe de
+  // sentiment se remplit toute seule. S'arrete des que FinBERT est indisponible ou si l'actif change.
+  const autoRun = useRef<string>("");
+  const [autoProgress, setAutoProgress] = useState<{ done: number; total: number } | null>(null);
+  const [autoMessage, setAutoMessage] = useState<string>("");
+  const analyzeAll = async (symbol: string, items: MarketNews[], known: Record<number, ModelSentimentResult>) => {
+    const todo = items.filter((n) => known[n.id]?.status !== "ANALYZED").slice(0, 30);
+    if (todo.length === 0 || autoRun.current === symbol + ":running") return;
+    autoRun.current = symbol + ":running";
+    setAutoMessage("");
+    setAutoProgress({ done: 0, total: todo.length });
+    let analyzed = 0;
+    for (let i = 0; i < todo.length; i++) {
+      if (!autoRun.current.startsWith(symbol + ":")) return;    // l'utilisateur a change d'actif
+      try {
+        const r = await marketNewsApi.analyze(todo[i].id);
+        setArticleAnalyses((prev) => ({ ...prev, [todo[i].id]: r }));
+        if (r.status === "ANALYZED") analyzed++;
+        else if (r.status === "UNAVAILABLE") {
+          setAutoMessage("FinBERT n'est pas encore prêt (fenêtre « MarketSim FinBERT ») : analyse automatique en pause.");
+          break;
+        }
+      } catch {
+        break;
+      }
+      setAutoProgress({ done: i + 1, total: todo.length });
+    }
+    autoRun.current = symbol + ":done";
+    setAutoProgress(null);
+    if (analyzed > 0) loadSentiment(symbol);
+  };
+  useEffect(() => {
+    // attendre les analyses deja faites de CET actif (sinon on reanalyserait tout)
+    if (!selectedSymbol || newsLoading || sentimentLoading || news.length === 0) return;
+    if (sentimentSummary?.symbol?.toUpperCase() !== selectedSymbol.toUpperCase()) return;
+    if (autoRun.current === selectedSymbol + ":done" || autoRun.current === selectedSymbol + ":running") return;
+    analyzeAll(selectedSymbol, news, articleAnalyses);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSymbol, newsLoading, sentimentLoading, news, sentimentSummary]);
+  useEffect(() => { autoRun.current = ""; setAutoMessage(""); }, [selectedSymbol]);
+
+  // Courbe : score de chaque article analyse (points) et moyenne du jour (ligne)
+  const sentimentCurve = useMemo(() => {
+    const byId = new Map(news.map((n) => [n.id, n]));
+    const pts = Object.values(articleAnalyses)
+      .filter((a) => a.status === "ANALYZED" && a.sentimentScore != null && byId.has(a.newsId))
+      .map((a) => ({ t: new Date(byId.get(a.newsId)!.publishedAt).getTime(), article: a.sentimentScore as number,
+        headline: byId.get(a.newsId)!.headline }))
+      .sort((x, y) => x.t - y.t);
+    // moyenne glissante sur les articles du meme jour, pour une courbe continue
+    const daySum = new Map<string, { s: number; n: number }>();
+    pts.forEach((p) => { const d = new Date(p.t).toISOString().slice(0, 10); const v = daySum.get(d) ?? { s: 0, n: 0 }; v.s += p.article; v.n++; daySum.set(d, v); });
+    let run = 0;
+    return pts.map((p, i) => {
+      run += p.article;
+      const d = new Date(p.t).toISOString().slice(0, 10);
+      const day = daySum.get(d)!;
+      return { ...p, average: Math.round((run / (i + 1)) * 1000) / 1000, daily: Math.round((day.s / day.n) * 1000) / 1000 };
+    });
+  }, [news, articleAnalyses]);
 
   const loadPredictions = () => {
     setPredLoading(true);
@@ -966,6 +1030,11 @@ export default function MarketPage() {
           <span className="ml-auto text-[10px] text-muted-foreground">
             FinBERT · {filteredNews.length}{filteredNews.length !== news.length ? ` / ${news.length}` : ""} articles
           </span>
+          <button onClick={() => { autoRun.current = ""; analyzeAll(selectedSymbol, filteredNews, articleAnalyses); }}
+            disabled={!!autoProgress || filteredNews.length === 0}
+            className="ml-3 text-[10px] font-semibold rounded border border-blue-500/40 bg-blue-500/10 px-2 py-1 text-blue-700 dark:text-blue-300 hover:bg-blue-500/20 disabled:opacity-50">
+            {autoProgress ? "Analyse…" : "Tout analyser"}
+          </button>
           <div className="flex items-center gap-2 ml-3">
             <input type="date" value={newsFromDate} onChange={(e) => setNewsFromDate(e.target.value)} className="text-[10px] border border-border/60 rounded px-1.5 py-1 bg-white" title="Date de début" />
             <input type="date" value={newsToDate} onChange={(e) => setNewsToDate(e.target.value)} className="text-[10px] border border-border/60 rounded px-1.5 py-1 bg-white" title="Date de fin" />
@@ -1020,23 +1089,42 @@ export default function MarketPage() {
             </p>
           )}
 
-          {sentimentHistory?.points.length ? (
+          {autoProgress && (
+            <div className="flex items-center gap-2 text-[11px] text-blue-600 dark:text-blue-300">
+              <RefreshCw className="w-3 h-3 animate-spin" />
+              Analyse FinBERT des actualités : {autoProgress.done} / {autoProgress.total}
+            </div>
+          )}
+          {autoMessage && <p className="text-[11px] text-amber-600">{autoMessage}</p>}
+
+          {sentimentCurve.length > 0 ? (
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-medium text-foreground">Daily sentiment score</span>
+                <span className="text-xs font-medium text-foreground">Évolution du sentiment FinBERT</span>
                 <span className="text-[10px] text-muted-foreground">
-                  FinBERT {sentimentSummary?.modelVersion?.slice(0, 12)} · {sentimentSummary?.periodDays ?? 30} days
+                  {sentimentCurve.length} article(s) analysé(s) · FinBERT {sentimentSummary?.modelVersion?.slice(0, 12)} · {sentimentSummary?.periodDays ?? 30} jours
                 </span>
               </div>
-              <div className="h-36 w-full">
+              <div className="h-48 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={sentimentHistory.points}>
+                  <ComposedChart data={sentimentCurve} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="sentFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="date" tick={{ fontSize: 9 }} />
-                    <YAxis domain={[-1, 1]} tick={{ fontSize: 9 }} />
-                    <Tooltip formatter={(value: number) => [value.toFixed(3), "Score"]} />
-                    <Area type="monotone" dataKey="sentimentScore" stroke="#2563eb" fill="#93c5fd" fillOpacity={0.28} />
-                  </AreaChart>
+                    <XAxis dataKey="t" type="number" scale="time" domain={["dataMin", "dataMax"]} tick={{ fontSize: 9 }}
+                      tickFormatter={(t: number) => new Date(t).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} />
+                    <YAxis domain={[-1, 1]} ticks={[-1, -0.5, 0, 0.5, 1]} tick={{ fontSize: 9 }} />
+                    <Tooltip labelFormatter={(t: number) => new Date(t).toLocaleString("fr-FR")}
+                      formatter={(value: number, name: string) => [Number(value).toFixed(3), name === "article" ? "Article" : name === "daily" ? "Moyenne du jour" : "Moyenne cumulée"]} />
+                    <Legend wrapperStyle={{ fontSize: 10 }} formatter={(v: string) => (v === "article" ? "Score de l'article" : v === "daily" ? "Moyenne du jour" : "Moyenne cumulée")} />
+                    <Area type="monotone" dataKey="average" stroke="#2563eb" strokeWidth={2} fill="url(#sentFill)" isAnimationActive={false} />
+                    <Line type="stepAfter" dataKey="daily" stroke="#f59e0b" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                    <Scatter dataKey="article" fill="#10b981" isAnimationActive={false} />
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
