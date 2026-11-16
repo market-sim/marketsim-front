@@ -494,8 +494,27 @@ export interface PortfolioRisk {
   assumptions: string;
 }
 
+/** Stop-loss / take-profit proposes selon la volatilite de l'actif (POST /trading/risk/suggest-protection). */
+export interface ProtectionSuggestion {
+  symbol: string;
+  side: OrderSide;
+  entryPrice: number;
+  stopLoss: number;
+  takeProfit: number;
+  sigmaDailyPct: number;
+  sigmaAnnualPct: number;
+  sigmaSource: "REAL" | "MODEL";
+  sigmaMultiple: number;
+  rewardRisk: number;
+  maxLoss: number;
+  expectedGain: number;
+  explanation: string;
+}
+
 export const riskApi = {
   assess: (req: RiskAssessRequest) => api.post<RiskAssessment>("/trading/risk/assess", req).then((r) => r.data),
+  suggestProtection: (req: Omit<RiskAssessRequest, "stopLoss">) =>
+    api.post<ProtectionSuggestion>("/trading/risk/suggest-protection", req).then((r) => r.data),
   portfolio: () => api.get<PortfolioRisk>("/trading/risk/portfolio").then((r) => r.data),
 };
 

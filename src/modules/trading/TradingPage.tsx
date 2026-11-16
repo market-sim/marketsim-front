@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { Ban, Bot, Pencil, X } from "lucide-react";
+import { Ban, Bot, Pencil, Sparkles, X } from "lucide-react";
 import { fmt, MONO, DISPLAY, CardShell } from "../../shared/ui";
 import {
   assetsApi, ordersApi, portfolioApi, riskApi,
-  type Asset, type EquityPoint, type OrderSide, type OrderType, type Portfolio, type PortfolioRisk, type RiskAssessment,
+  type Asset, type EquityPoint, type OrderSide, type OrderType, type Portfolio, type PortfolioRisk, type RiskAssessment, type ProtectionSuggestion,
   type TradeOrder, type UpdateOrderRequest,
 } from "../../api/endpoints";
 import { quotePrice } from "../market/LiveQuotes";
@@ -98,6 +98,30 @@ export default function TradingPage() {
     return () => { cancelled = true; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [riskKey, portfolio?.equity]);
+
+  // Suggestion de SL / TP selon la volatilite (module 2, exigence du cahier) : remplit les deux champs ;
+  // la jauge de risque se reevalue ensuite toute seule (le stop-loss fait partie de sa requete).
+  const [suggestion, setSuggestion] = useState<ProtectionSuggestion | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState("");
+  async function suggestProtection() {
+    const req = buildRiskRequest({ ...form, stopLoss: "", takeProfit: "" });
+    if (!req) { setSuggestError("Renseigne d'abord l'actif, la quantité (et le prix limite pour un ordre LIMIT / STOP)."); return; }
+    setSuggesting(true);
+    setSuggestError("");
+    try {
+      const s = await riskApi.suggestProtection({ symbol: req.symbol, side: req.side, orderType: req.orderType, quantity: req.quantity, limitPrice: req.limitPrice });
+      setSuggestion(s);
+      setForm((f) => ({ ...f, stopLoss: String(s.stopLoss), takeProfit: String(s.takeProfit) }));
+    } catch (e) {
+      setSuggestion(null);
+      setSuggestError(apiError(e));
+    } finally {
+      setSuggesting(false);
+    }
+  }
+  // la suggestion ne vaut que pour l'ordre pour lequel elle a ete calculee
+  useEffect(() => { setSuggestion(null); }, [form.symbol, form.side, form.orderType]);
 
   const asset = assets.find((a) => a.symbol === form.symbol);
   const blocked = risk?.level === "BLOCKED";
@@ -223,6 +247,13 @@ export default function TradingPage() {
                 </p>
               </div>
             )}
+            <div className="flex items-center justify-between -mb-1">
+              <span className="text-[11px] text-muted-foreground">Protection</span>
+              <button type="button" onClick={suggestProtection} disabled={suggesting || !form.symbol}
+                className="inline-flex items-center gap-1 rounded-md border border-blue-500/40 bg-blue-500/10 px-2 py-1 text-[11px] font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-500/20 disabled:opacity-50">
+                <Sparkles className="w-3 h-3" /> {suggesting ? "Calcul…" : "Suggérer SL/TP"}
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelClass}>Stop-Loss</label>
@@ -233,6 +264,16 @@ export default function TradingPage() {
                 <input type="number" step="any" value={form.takeProfit} onChange={(e) => set("takeProfit", e.target.value)} className={inputClass} />
               </div>
             </div>
+            {suggestion && (
+              <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-2.5 text-[11.5px] leading-snug text-foreground" data-testid="protection-explanation">
+                <p>{suggestion.explanation}</p>
+                <p className="mt-1 text-muted-foreground">
+                  σ {suggestion.sigmaSource === "REAL" ? "réelle" : "modèle"} : {suggestion.sigmaDailyPct.toFixed(2).replace(".", ",")} % / jour
+                  · gain visé ≈ {fmt(suggestion.expectedGain)} · perte max ≈ {fmt(suggestion.maxLoss)}
+                </p>
+              </div>
+            )}
+            {suggestError && <p className="text-[11.5px] text-red-600">{suggestError}</p>}
 
             {/* Jauge de risque reelle (POST /risk/assess) */}
             <div>
