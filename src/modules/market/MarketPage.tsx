@@ -129,6 +129,8 @@ export default function MarketPage() {
     successRate: number | null; brierScore: number | null;
     byDirection: Record<string, { total: number; correct: number; rate: number }>;
     calibration: { from: number; to: number; count: number; avgConfidence: number; actualRate: number }[];
+    liveResolved?: number; historicalCount?: number; historicalHorizon?: number | null;
+    historicalFrom?: string | null; historicalTo?: string | null; historicalSource?: string | null;
   } | null>(null);
   const [backtestLoading, setBacktestLoading] = useState(false);
 
@@ -894,7 +896,7 @@ export default function MarketPage() {
 
                       {pred.candidateMetricsJson && (
                         <div className="text-[10px] text-muted-foreground mb-1">
-                          Ensemble : {(() => { try { const c = JSON.parse(pred.candidateMetricsJson) as { name: string; mae: number }[]; return c.map((x) => `${x.name} (MAE ${x.mae.toFixed(2)})`).join(" · "); } catch { return ""; } })()}
+                          Ensemble : {(() => { try { const c = JSON.parse(pred.candidateMetricsJson) as { name?: string; model?: string; mae: number }[]; return c.map((x) => `${x.name ?? x.model ?? "?"} (MAE ${x.mae.toFixed(2)})`).join(" · "); } catch { return ""; } })()}
                         </div>
                       )}
                       {pred.sentimentScore != null && (
@@ -1007,14 +1009,22 @@ export default function MarketPage() {
                       <div className="flex-1 h-1.5 bg-muted rounded-full relative">
                         <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${Math.min(100, b.actualRate * 100)}%` }} />
                       </div>
-                      <span className="w-24 text-right text-muted-foreground">{b.count} pts · { (b.actualRate * 100).toFixed(0)}% (avg {(b.avgConfidence * 100).toFixed(0)}%)</span>
+                      <span className="w-44 shrink-0 text-right text-muted-foreground whitespace-nowrap">{b.count} pts · { (b.actualRate * 100).toFixed(0)}% (avg {(b.avgConfidence * 100).toFixed(0)}%)</span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
+            {(backtest.historicalCount ?? 0) > 0 && (
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                {backtest.historicalCount} prédiction(s) rejouée(s) sur l&apos;historique réel de {selectedSymbol}
+                {backtest.historicalSource ? ` (${backtest.historicalSource})` : ""} du {backtest.historicalFrom} au {backtest.historicalTo} :
+                à chaque date, le modèle ne voit que les cours passés, prévoit le sens à {backtest.historicalHorizon} jours, puis on compare au cours réel.
+                {` ${backtest.liveResolved ?? 0} prédiction(s) réelle(s) résolue(s).`}
+              </p>
+            )}
             {backtest.resolved === 0 && (
-              <p className="text-[10px] text-muted-foreground">Aucune prédiction résolue pour l'instant (l'horizon n'est pas encore écoulé).</p>
+              <p className="text-[10px] text-muted-foreground">Aucune prédiction résolue pour l'instant (l'horizon n'est pas encore écoulé) et pas assez d'historique pour rejouer.</p>
             )}
           </div>
         )}

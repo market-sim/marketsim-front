@@ -756,6 +756,8 @@ export const predictionsApi = {
     successRate: number | null; brierScore: number | null;
     byDirection: Record<string, { total: number; correct: number; rate: number }>;
     calibration: { from: number; to: number; count: number; avgConfidence: number; actualRate: number }[];
+    liveResolved?: number; historicalCount?: number; historicalHorizon?: number | null;
+    historicalFrom?: string | null; historicalTo?: string | null; historicalSource?: string | null;
   }>(`/market/predictions/backtest`, { params: symbol ? { symbol } : {} }).then((r) => r.data),
   /** Génère et persiste une nouvelle prédiction (ADMIN). */
   generate: (symbol: string, horizon?: number) =>
