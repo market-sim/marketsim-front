@@ -727,12 +727,13 @@ export default function MarketPage() {
                   Model: {predModels[0].version} · {predictions.length} prediction{predictions.length !== 1 ? "s" : ""}
                 </span>
               )}
-              {user?.role === "ADMIN" && (
+              {/* tout utilisateur connecte peut generer une prediction (calcul sur les vraies donnees, rien n'est achete) */}
+              {user && (
                 <div className="flex items-center gap-1.5">
                   <select
                     value={predHorizon}
                     onChange={(e) => setPredHorizon(Number(e.target.value))}
-                    className="text-[11px] border border-border/60 rounded px-1.5 py-1 bg-white"
+                    className="text-[11px] border border-border/60 rounded px-1.5 py-1 bg-background text-foreground"
                     title="Horizon de prédiction (jours)"
                   >
                     {[1, 3, 5, 7, 14, 30].map((d) => (
