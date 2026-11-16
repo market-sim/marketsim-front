@@ -12,7 +12,7 @@ import { speak, ttsSupported } from "../speech";
 import { adviceLabel, buildDebrief, expectedChoice, usd as eur, type Choice, type Decision } from "../schoolLogic";
 import CandleChart, { type HumanTrade } from "./CandleChart";
 
-const START_CAPITAL = 1000;
+const START_CAPITAL = 100_000;   // capital de depart unique (le meme que le trading)
 const ZOOMS = [20, 40, 80];
 const FRACTIONS = [0.25, 0.5, 1];
 const STEPS = [1, 3, 5];
@@ -46,7 +46,7 @@ function beginnerTip(o: { invested: boolean; latent: number | null; stopPct: num
 interface Feedback { from: number; to: number; choice: Choice; followed: boolean; coach: string; market: number; mine: number }
 
 /**
- * Mode debutant : tu pars avec 1 000 EUR virtuels sur un marche simule ; le coach IA te conseille acheter / garder / vendre
+ * Mode debutant : tu pars avec 100 000 $ virtuels (portefeuille unique) sur un marche simule ; le coach IA te conseille acheter / garder / vendre
  * a chaque etape en expliquant pourquoi ; tu decides, le marche avance, tu gagnes ou tu perds. A la fin, un bilan montre
  * ce qui a marche, ce qui a coute cher, et ce que le coach aurait fait.
  */
@@ -89,7 +89,7 @@ export default function BeginnerSchool({ agent, onExit }: { agent: AgentConfig; 
 
   const start = async (seed: number | null) => {
     if (progression?.bankrupt) {
-      setError("Ton portefeuille est vide : recommence avec 1 000 $ (bouton du niveau, en haut à droite).");
+      setError("Ton portefeuille est vide : recommence avec 100 000 $ (bouton du niveau, en haut à droite).");
       return;
     }
     setBusy(true);
@@ -280,7 +280,7 @@ export default function BeginnerSchool({ agent, onExit }: { agent: AgentConfig; 
           </p>
         )}
         {progression?.bankrupt && (
-          <p className="text-[12px] text-red-500 mt-3">Ton portefeuille est vide. Clique sur ton niveau en haut à droite puis « Recommencer avec 1 000 $ ».</p>
+          <p className="text-[12px] text-red-500 mt-3">Ton portefeuille est vide. Clique sur ton niveau en haut à droite puis « Recommencer avec 100 000 $ ».</p>
         )}
         <p className="text-[11px] text-muted-foreground mt-3 max-w-3xl">
           Ici l'argent est virtuel et le marché simulé : un résultat de simulation ne prédit pas un résultat réel. Méfie-toi des publicités qui promettent des gains faciles

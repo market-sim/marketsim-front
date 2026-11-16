@@ -9,12 +9,12 @@ const fmt = (v: number) => `${v.toLocaleString("fr-FR", { minimumFractionDigits:
 /** Fenetre de l'admin pour modifier le montant du portefeuille d'un trader (motif obligatoire). */
 export default function EditBalanceDialog({ user, current, onClose, onSaved }: {
   user: User;
-  /** solde actuel, null si le trader n'a jamais joue (portefeuille de depart 1 000 $) */
+  /** solde actuel, null si le trader n'a jamais joue (capital de depart 100 000 $, le meme que le trading) */
   current: number | null;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
-  const start = current ?? 1000;
+  const start = current ?? 100_000;
   const [amount, setAmount] = useState(start.toFixed(2));
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -36,7 +36,7 @@ export default function EditBalanceDialog({ user, current, onClose, onSaved }: {
     { label: "+500", v: (x) => x + 500 },
     { label: "−100", v: (x) => Math.max(0, x - 100) },
     { label: "×2", v: (x) => x * 2 },
-    { label: "Départ (1 000 $)", v: () => 1000 },
+    { label: "Départ (100 000 $)", v: () => 100000 },
   ];
 
   async function save() {
@@ -86,8 +86,8 @@ export default function EditBalanceDialog({ user, current, onClose, onSaved }: {
           {valid && diff !== 0 && (
             <p className={`text-[12.5px] font-medium ${diff > 0 ? "text-emerald-600" : "text-red-600"}`}>
               {diff > 0 ? "+" : ""}{fmt(diff)} par rapport au solde actuel
-              {value < 1000 && " · sous 1 000 $, le trader redevient Débutant"}
-              {value < 100 && " · sous 100 $, il devra recommencer"}
+              {value < 100000 && " · sous 100 000 $, le trader redevient Débutant"}
+              {value < 1000 && " · sous 1 000 $ (1 % du départ), il devra recommencer"}
             </p>
           )}
           <label className="block">

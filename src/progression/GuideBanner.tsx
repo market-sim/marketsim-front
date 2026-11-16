@@ -10,7 +10,7 @@ const GUIDES: Record<string, PageGuide> = {
   "/": {
     title: "Bienvenue ! Par où commencer",
     steps: [
-      "Tu as un portefeuille de 1 000 $ virtuels (en haut à droite). Il monte ou descend selon tes parties.",
+      "Tu as un portefeuille unique de 100 000 $ virtuels (en haut à droite) : le même pour le jeu, le trading et le pilote automatique.",
       "Va dans « Agent IA », ouvre l'onglet « Replay vs Agent » puis le Jeu de trading.",
       "Joue une partie : le coach te conseille à chaque étape, le guide t'explique quoi faire.",
       "Ton niveau monte si ton argent grandit ET si tu trades bien. Clique sur ton niveau pour voir ce qu'il te manque.",

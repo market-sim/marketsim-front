@@ -991,7 +991,7 @@ export const scenariosApi = {
   remove: (id: number) => api.delete(`/stress/scenarios/${id}`),
 };
 
-// ─── Progression : portefeuille de 1 000 $, niveau du trader, difficulte de l'application ──
+// ─── Progression : portefeuille unique (100 000 $, partage avec le trading), niveau du trader, difficulte de l'application ──
 export type GuideMode = "DETAILED" | "TIPS" | "NONE";
 export type CoachMode = "ALWAYS" | "ALWAYS_NO_HIGHLIGHT" | "AFTER_DECISION" | "HIDDEN";
 

@@ -29,7 +29,7 @@ export default function LevelBadge() {
   const gain = p.balance / p.startBalance - 1;
 
   const restart = async (force: boolean) => {
-    if (force && !window.confirm("Recommencer à 1 000 $ au niveau Débutant ? Ton portefeuille actuel sera remis à zéro.")) return;
+    if (force && !window.confirm("Recommencer à 100 000 $ au niveau Débutant ? Ton portefeuille actuel sera remis à zéro.")) return;
     setBusy(true);
     setError("");
     try {
@@ -91,10 +91,10 @@ export default function LevelBadge() {
           {p.bankrupt ? (
             <div className="mt-3 rounded-lg bg-red-500/10 p-3">
               <p className="text-[12px] font-semibold text-red-500">Portefeuille vide</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Tu ne peux plus jouer avec ce solde. Recommence avec 1 000 $ au niveau Débutant : tu gardes ce que tu as appris.</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Tu ne peux plus jouer avec ce solde. Recommence avec 100 000 $ au niveau Débutant : tu gardes ce que tu as appris.</p>
               <button onClick={() => restart(false)} disabled={busy}
                 className="mt-2 flex items-center gap-1.5 rounded-lg bg-red-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-600 disabled:opacity-60">
-                <RotateCcw className="w-3.5 h-3.5" />Recommencer avec 1 000 $
+                <RotateCcw className="w-3.5 h-3.5" />Recommencer avec 100 000 $
               </button>
             </div>
           ) : p.nextLevel ? (
@@ -117,7 +117,7 @@ export default function LevelBadge() {
                   </div>
                 ))}
               </div>
-              <p className="text-[10px] text-muted-foreground mt-2">Si tu perds de l'argent par rapport à 1 000 $, tu restes Débutant.</p>
+              <p className="text-[10px] text-muted-foreground mt-2">Si tu perds de l'argent par rapport à 100 000 $, tu restes Débutant.</p>
             </div>
           ) : (
             <p className="mt-3 text-[11.5px] text-amber-500 font-semibold">Niveau maximum atteint. Garde-le : une mauvaise série te fait redescendre.</p>

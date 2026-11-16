@@ -367,7 +367,7 @@ export default function AdminUsersPage() {
                 <td className="px-5 py-3.5 text-right text-[12px] font-semibold tabular-nums">
                   <span className="inline-flex items-center justify-end gap-1.5">
                     {ts
-                      ? <span className={ts.bankrupt ? "text-red-500" : ts.balance >= 1000 ? "text-emerald-600" : "text-red-500"}>{money(ts.balance)}{ts.bankrupt ? " · vide" : ""}</span>
+                      ? <span className={ts.bankrupt ? "text-red-500" : ts.balance >= 100_000 ? "text-emerald-600" : "text-red-500"}>{money(ts.balance)}{ts.bankrupt ? " · vide" : ""}</span>
                       : <span className="text-muted-foreground font-normal">—</span>}
                     {!isAdminRow && !u.deleted && (
                       <button onClick={() => setEditBalance({ user: u, current: ts ? ts.balance : null })}

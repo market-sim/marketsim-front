@@ -25,7 +25,7 @@ export default function ProgressionPage() {
 
   const counted = useMemo(() => history.filter((g) => g.counted), [history]);
   const curve = useMemo(() => {
-    const out = [{ n: 0, balance: p?.startBalance ?? 1000 }];
+    const out = [{ n: 0, balance: p?.startBalance ?? 100_000 }];
     counted.forEach((g, i) => out.push({ n: i + 1, balance: g.endBalance }));
     return out;
   }, [counted, p?.startBalance]);
@@ -79,7 +79,7 @@ export default function ProgressionPage() {
         <>
           <CardShell className="p-5">
             <h3 className="text-sm font-semibold text-foreground mb-1" style={DISPLAY}>Ton portefeuille partie après partie</h3>
-            <p className="text-[11.5px] text-muted-foreground mb-3">Sous la ligne des 1 000 $, tu restes Débutant.</p>
+            <p className="text-[11.5px] text-muted-foreground mb-3">Sous la ligne des 100 000 $ (ton capital de départ), tu restes Débutant.</p>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={curve} margin={{ top: 5, right: 16, left: 0, bottom: 0 }}>

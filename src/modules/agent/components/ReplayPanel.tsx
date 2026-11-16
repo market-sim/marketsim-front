@@ -131,7 +131,7 @@ export default function ReplayPanel({ agent, startInGame = false, onGameOpened }
           <span className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center shrink-0"><GraduationCap className="w-5 h-5 text-white" /></span>
           <span className="min-w-0">
             <span className="block text-sm font-semibold text-foreground" style={DISPLAY}>
-              🎓 Jeu de trading · {progression ? `${money(progression.balance)} · niveau ${LEVEL_LABEL[progression.level]}` : "1 000 $ virtuels"}
+              🎓 Jeu de trading · {progression ? `${money(progression.balance)} · niveau ${LEVEL_LABEL[progression.level]}` : "100 000 $ virtuels"}
             </span>
             <span className="block text-[11.5px] text-muted-foreground">
               Joue avec ton portefeuille : gagne pour le faire grandir et monter de niveau. Plus ton niveau monte, plus le jeu devient difficile (moins d'aide du coach, frais plus élevés, krach imposé).

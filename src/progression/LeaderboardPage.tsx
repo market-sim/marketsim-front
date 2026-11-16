@@ -49,7 +49,7 @@ export default function LeaderboardPage() {
                     <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Score</p>
                     <p className="text-xl font-semibold text-foreground" style={MONO}>{e.skillScore}</p>
                   </div>
-                  <p className={`text-sm font-semibold ${e.balance >= 1000 ? "text-emerald-600" : "text-red-500"}`} style={MONO}>{money(e.balance)}</p>
+                  <p className={`text-sm font-semibold ${e.balance >= 100_000 ? "text-emerald-600" : "text-red-500"}`} style={MONO}>{money(e.balance)}</p>
                 </div>
               </CardShell>
             );
@@ -88,7 +88,7 @@ export default function LeaderboardPage() {
                         <span className="font-semibold text-foreground" style={MONO}>{e.skillScore}</span>
                       </div>
                     </td>
-                    <td className={`px-5 py-3 text-right font-semibold ${e.balance >= 1000 ? "text-emerald-600" : "text-red-500"}`} style={MONO}>{money(e.balance)}</td>
+                    <td className={`px-5 py-3 text-right font-semibold ${e.balance >= 100_000 ? "text-emerald-600" : "text-red-500"}`} style={MONO}>{money(e.balance)}</td>
                     <td className="px-5 py-3 text-right text-muted-foreground" style={MONO}>{e.games} · {e.trades} trades</td>
                     <td className="px-5 py-3 text-right text-muted-foreground" style={MONO}>{Math.round(e.winRate * 100)} %</td>
                     <td className="px-5 py-3">

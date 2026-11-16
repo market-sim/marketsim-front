@@ -51,10 +51,10 @@ function TraderTop() {
   }, [p?.games]);
 
   const counted = useMemo(() => history.filter((g) => g.counted), [history]);
-  // ta courbe et celle qu'aurait eue l'agent sur les memes parties, a partir de 1 000 $
+  // ta courbe et celle qu'aurait eue l'agent sur les memes parties, a partir du capital de depart
   const curve = useMemo(() => {
-    const out = [{ n: "Départ", toi: p?.startBalance ?? 1000, agent: p?.startBalance ?? 1000 }];
-    let agent = p?.startBalance ?? 1000;
+    const out = [{ n: "Départ", toi: p?.startBalance ?? 100_000, agent: p?.startBalance ?? 100_000 }];
+    let agent = p?.startBalance ?? 100_000;
     counted.forEach((g, i) => {
       agent *= 1 + (g.agentReturn ?? 0);
       out.push({ n: `#${i + 1}`, toi: g.endBalance, agent: Math.round(agent * 100) / 100 });
@@ -93,7 +93,7 @@ function TraderTop() {
           </div>
           {counted.length === 0 ? (
             <div className="h-[200px] flex flex-col items-center justify-center gap-3 text-center">
-              <p className="text-[12.5px] text-muted-foreground max-w-sm">Joue ta première partie pour voir ici l'évolution de ton portefeuille de 1 000 $.</p>
+              <p className="text-[12.5px] text-muted-foreground max-w-sm">Joue ta première partie pour voir ici l'évolution de ton portefeuille de 100 000 $ (le même que le trading).</p>
               <button onClick={() => navigate("/agent?play=1")} className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700">
                 <Gamepad2 className="w-4 h-4" />Jouer une partie
               </button>

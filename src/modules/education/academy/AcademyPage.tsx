@@ -526,7 +526,7 @@ export default function AcademyPage() {
               Félicitations {user?.firstName ?? ""} ! Tu as terminé les {MAIN_STATIONS.length} stations avec {xp} XP sur {TOTAL_XP}.
             </p>
             <p className="text-[13px] text-slate-600 mt-2">
-              Maintenant, applique tout ça dans le jeu : bats l'agent IA, garde tes stop-loss et fais grandir tes 1 000 $ pour monter de niveau.
+              Maintenant, applique tout ça dans le jeu : bats l'agent IA, garde tes stop-loss et fais grandir tes 100 000 $ pour monter de niveau.
             </p>
             <div className="mt-5 flex gap-2 justify-center">
               <button onClick={() => navigate("/agent?play=1")} className="text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-4 py-2">Jouer maintenant</button>
