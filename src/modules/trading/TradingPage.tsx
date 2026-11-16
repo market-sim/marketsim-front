@@ -78,8 +78,10 @@ export default function TradingPage() {
       if (list.length) setForm((f) => ({ ...f, symbol: f.symbol || list[0].symbol }));
     }).catch((e) => setError(apiError(e)));
     refresh();
-    const timer = setInterval(refresh, 3000);   // prix du moteur (3 s) et stop-loss / take-profit declenches
-    return () => clearInterval(timer);
+    const timer = setInterval(refresh, 3000);   // portefeuille, ordres et stop-loss / take-profit declenches
+    // prix seuls, chaque seconde : le meme prix que la page Marche et le bandeau
+    const prices = setInterval(() => { assetsApi.list().then(setAssets).catch(() => {}); }, 1000);
+    return () => { clearInterval(timer); clearInterval(prices); };
   }, [refresh]);
 
   // Jauge de risque : simulation a blanc avec debounce de 400 ms

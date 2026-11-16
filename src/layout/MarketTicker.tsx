@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { tickerApi, type TickerQuote } from "../api/endpoints";
 
 // les actifs tradables (AAPL, BTC, OR...) affichent le prix du moteur du module 5, qui bouge toutes les 3 s
-const REFRESH_MS = 5_000;
+const REFRESH_MS = 3_000;
 
 function formatPrice(q: TickerQuote) {
   const digits = q.category === "FOREX" ? 4 : q.price >= 1000 ? 2 : 2;

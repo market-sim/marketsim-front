@@ -4,7 +4,9 @@ import { Radio } from "lucide-react";
 import { assetsApi, marketTicksApi, type Asset, type PriceTick } from "../../api/endpoints";
 import { CardShell, DISPLAY, MONO } from "../../shared/ui";
 
-const REFRESH_MS = 3000;
+// le moteur fait un pas toutes les 3 s : en relisant chaque seconde, la page Marche, le formulaire d'ordre et le
+// bandeau montrent le meme prix (au plus 1 s d'ecart juste apres un pas)
+const REFRESH_MS = 1000;
 const HISTORY_MS = 60_000;
 
 /** Prix affiche avec les memes decimales que le bandeau et le formulaire d'ordre. */
