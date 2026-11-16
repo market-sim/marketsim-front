@@ -28,7 +28,7 @@ export const navItems = [
   { path: "/market",     label: "Market & Prediction",    Icon: Radio           },
   { path: "/agent",      label: "AI Trading Agent",       Icon: Bot             },
   { path: "/stress",     label: "Stress Testing",         Icon: Activity        },
-  { path: "/blockchain", label: "Blockchain Layer",       Icon: Shield          },
+  { path: "/blockchain", label: "Registre d'audit",       Icon: Shield          },
 ];
 
 /** Pour les traders (pas l'admin) : portefeuille, niveau et comparaison avec l'agent. */
@@ -61,7 +61,7 @@ export const pageTitles: Record<string, { title: string; sub: string }> = {
   "/market":     { title: "Market & Prediction",    sub: "AI Forecasts · Sentiment Analysis"             },
   "/agent":      { title: "AI Trading Agent",       sub: "Autonomous RL Agent · XAI Explanations"        },
   "/stress":     { title: "Stress Testing",         sub: "Scenario Simulation · Bank Resilience"         },
-  "/blockchain": { title: "Blockchain Layer",       sub: "Immutable Records · Certificates · Audit Trail" },
+  "/blockchain": { title: "Registre d'audit",       sub: "Chaîne de hachage HMAC · Preuves de Merkle · Vérification" },
   "/admin":          { title: "Administration",         sub: "Comptes utilisateurs · Module 1"               },
   "/admin/stats":    { title: "Statistiques",           sub: "Supervision · Comptes · Connexions · Module 1" },
   "/admin/settings": { title: "Paramètres",             sub: "Inscription · Verrouillage · Module 1"         },

@@ -37,6 +37,7 @@ import { fmt, pct, priceDisplay, MONO, DISPLAY, SignalBadge, SectionHeader, Card
 import type { Signal, Sentiment, Direction, BankStatus } from "../../shared/ui";
 import { predictions, newsItems } from "./mockData";
 import LiveQuotes from "./LiveQuotes";
+import DemoBanner from "../../shared/DemoBanner";
 
 export default function MarketPage() {
   return (
@@ -48,6 +49,7 @@ export default function MarketPage() {
           title="AI Price Predictions"
           action={<span className="text-[11px] text-muted-foreground">Models: LSTM · Prophet · Ensemble</span>}
         />
+        <DemoBanner module="module 5 — prédictions LSTM / Prophet" className="mb-3" />
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {predictions.map((pred) => (
             <CardShell key={pred.asset} className="p-4 hover:shadow-sm transition-shadow">
@@ -86,6 +88,7 @@ export default function MarketPage() {
           <Newspaper className="w-4 h-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>News Sentiment Analysis</h3>
         </div>
+        <DemoBanner module="module 5 — actualités et sentiment NLP" className="mx-5 mt-4" />
         <div className="divide-y divide-border/40">
           {newsItems.map((item, i) => (
             <div key={i} className="flex items-start gap-4 px-5 py-4 hover:bg-muted/10 transition-colors">

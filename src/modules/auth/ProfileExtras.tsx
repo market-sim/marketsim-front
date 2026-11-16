@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import PromptDialog, { type PromptRequest } from "../../shared/PromptDialog";
 import { Camera, Check, Copy, ExternalLink, Globe, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { profileApi, type Language, type Preferences, type PreferencesUpdate, type ThemePref, type TraderCard } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
@@ -107,6 +108,7 @@ export default function ProfileExtras() {
     }
   }
 
+  const [linkDialog, setLinkDialog] = useState<PromptRequest | null>(null);
   async function copy() {
     if (!prefs) return;
     try {
@@ -114,7 +116,8 @@ export default function ProfileExtras() {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      window.prompt(t("profile.copyLink"), publicCardUrl(prefs.publicId));
+      // presse-papiers refuse (HTTP, permission) : on montre le lien a copier a la main
+      setLinkDialog({ title: t("profile.copyLink"), label: t("profile.copyLink"), initialValue: publicCardUrl(prefs.publicId), readOnly: true });
     }
   }
 
@@ -128,6 +131,7 @@ export default function ProfileExtras() {
 
   return (
     <div className="space-y-4">
+      <PromptDialog request={linkDialog} onClose={() => setLinkDialog(null)} />
       {/* photo */}
       <CardShell className="p-6">
         <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>{t("profile.photo")}</h3>

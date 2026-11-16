@@ -39,6 +39,8 @@ import {
 import { fmt, pct, priceDisplay, MONO, DISPLAY, SignalBadge, SectionHeader, CardShell } from "../../shared/ui";
 import type { Signal, Sentiment, Direction, BankStatus } from "../../shared/ui";
 import { indicators } from "./mockData";
+import DemoBanner from "../../shared/DemoBanner";
+import PromptDialog, { type PromptRequest } from "../../shared/PromptDialog";
 
 const num = (v: number | null | undefined, suffix = "") => (v == null ? "—" : `${v}${suffix}`);
 
@@ -48,13 +50,15 @@ export default function AnalysisPage() {
   const load = () => strategiesApi.list().then(setStrategies).catch(() => setStrategies([]));
   useEffect(() => { load(); }, []);
 
-  // TODO module 3 : remplacer le prompt par un vrai formulaire (Dialog de components/ui)
-  const createStrategy = async () => {
-    const name = prompt("Nom de la stratégie ?");
-    if (!name) return;
-    await strategiesApi.create({ name, indicators: "RSI(14)", status: "ACTIVE" });
-    load();
-  };
+  // Creation d'une strategie : vraie boite de dialogue (plus de window.prompt)
+  const [creating, setCreating] = useState<PromptRequest | null>(null);
+  const createStrategy = () => setCreating({
+    title: "Nouvelle stratégie", label: "Nom de la stratégie", placeholder: "Ex. : Momentum RSI", confirmLabel: "Créer", maxLength: 80,
+    onSubmit: async (name) => {
+      await strategiesApi.create({ name, indicators: "RSI(14)", status: "ACTIVE" });
+      await load();
+    },
+  });
 
   const deleteStrategy = async (id: number) => {
     await strategiesApi.remove(id);
@@ -62,6 +66,7 @@ export default function AnalysisPage() {
   };
   return (
     <div className="space-y-5">
+      <PromptDialog request={creating} onClose={() => setCreating(null)} />
       <CardShell className="overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/60">
           <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>Saved Strategies</h3>
@@ -112,6 +117,7 @@ export default function AnalysisPage() {
             <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>Technical Indicators</h3>
             <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">AAPL · 1D</span>
           </div>
+          <DemoBanner module="module 3 — indicateurs techniques" className="mb-3" />
           <div className="space-y-1">
             {indicators.map((ind) => (
               <div key={ind.name} className="flex items-center justify-between py-2.5 border-b border-border/40 last:border-0">
@@ -129,7 +135,8 @@ export default function AnalysisPage() {
         </CardShell>
 
         <CardShell className="p-5">
-          <h3 className="text-sm font-semibold text-foreground mb-4" style={DISPLAY}>Last Backtest — Momentum Alpha</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-3" style={DISPLAY}>Last Backtest — Momentum Alpha</h3>
+          <DemoBanner module="module 3 — backtesting" className="mb-4" />
           <div className="grid grid-cols-2 gap-3 mb-4">
             {[
               { label: "Total Return",    value: "+34.8%", ok: true  },

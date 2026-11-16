@@ -38,6 +38,7 @@ import {
 import { fmt, pct, priceDisplay, MONO, DISPLAY, SignalBadge, SectionHeader, CardShell } from "../../shared/ui";
 import type { Signal, Sentiment, Direction, BankStatus } from "../../shared/ui";
 import { bankResults } from "./mockData";
+import DemoBanner from "../../shared/DemoBanner";
 
 export default function StressPage() {
   // Module 7 : scenarios venant du backend (GET /api/stress/scenarios)
@@ -89,6 +90,7 @@ export default function StressPage() {
           <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>Bank Resilience Results</h3>
           <span className="ml-auto text-[10px] text-muted-foreground">AI Model: XGBoost + SHAP Explanations</span>
         </div>
+        <DemoBanner module="module 7 — résultats des banques" className="mx-5 mt-4" />
         <table className="w-full">
           <thead>
             <tr className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground bg-muted/20">

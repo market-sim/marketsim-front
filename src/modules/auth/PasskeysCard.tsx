@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import PromptDialog, { type PromptRequest } from "../../shared/PromptDialog";
 import { Fingerprint, Loader2, Pencil, Plus, ScanFace, Trash2 } from "lucide-react";
 import { passkeyApi, type Passkey } from "../../api/endpoints";
 import { useI18n } from "../../i18n/I18nContext";
@@ -42,11 +43,16 @@ export default function PasskeysCard() {
     }
   }
 
-  async function rename(p: Passkey) {
-    const n = window.prompt(t("pk.name"), p.name);
-    if (!n || n === p.name) return;
-    await passkeyApi.rename(p.id, n).catch((e) => setMsg({ ok: false, text: passkeyError(e) }));
-    load();
+  const [renaming, setRenaming] = useState<PromptRequest | null>(null);
+  function rename(p: Passkey) {
+    setRenaming({
+      title: t("pk.name"), label: t("pk.name"), initialValue: p.name, maxLength: 60,
+      onSubmit: async (n) => {
+        if (n === p.name) return;
+        await passkeyApi.rename(p.id, n).catch((e) => { throw new Error(passkeyError(e)); });
+        await load();
+      },
+    });
   }
 
   async function remove(p: Passkey) {
@@ -57,6 +63,7 @@ export default function PasskeysCard() {
 
   return (
     <CardShell className="p-5">
+      <PromptDialog request={renaming} onClose={() => setRenaming(null)} />
       <div className="flex items-center gap-2 mb-1">
         <ScanFace className="w-4 h-4 text-emerald-500" />
         <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>{t("pk.title")}</h3>

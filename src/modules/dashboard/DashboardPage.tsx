@@ -49,6 +49,7 @@ import {
 import { fmt, pct, priceDisplay, MONO, DISPLAY, SignalBadge, SectionHeader, CardShell } from "../../shared/ui";
 import type { Signal, Sentiment, Direction, BankStatus } from "../../shared/ui";
 import DashboardTop from "./DashboardTop";
+import { quotePrice } from "../market/LiveQuotes";
 import { useAuth } from "../../auth/AuthContext";
 
 export default function DashboardPage() {
@@ -118,9 +119,8 @@ export default function DashboardPage() {
               <tr className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground bg-muted/20">
                 <th className="text-left px-5 py-3">Asset</th>
                 <th className="text-right px-5 py-3">Price</th>
-                <th className="text-right px-5 py-3">24h Change</th>
+                <th className="text-right px-5 py-3">Variation du jour</th>
                 <th className="text-right px-5 py-3">Type</th>
-                <th className="text-right px-5 py-3">AI Signal</th>
                 <th className="px-5 py-3" />
               </tr>
             </thead>
@@ -138,7 +138,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-5 py-3.5 text-right"><span className="text-sm font-medium text-foreground" style={MONO}>{priceDisplay(Number(asset.price))}</span></td>
+                  <td className="px-5 py-3.5 text-right"><span className="text-sm font-medium text-foreground" style={MONO}>{quotePrice(asset)}</span></td>
                   <td className="px-5 py-3.5 text-right">
                     <span className={`inline-flex items-center gap-0.5 text-sm font-medium ${asset.changePct >= 0 ? "text-emerald-600" : "text-red-500"}`}>
                       {asset.changePct >= 0 ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
@@ -146,7 +146,6 @@ export default function DashboardPage() {
                     </span>
                   </td>
                   <td className="px-5 py-3.5 text-right"><span className="text-[11px] text-muted-foreground" style={MONO}>{asset.type}</span></td>
-                  <td className="px-5 py-3.5 text-right"><SignalBadge signal={asset.changePct >= 0 ? "BUY" : "SELL"} />  {/* TODO IA module 5 : vrai signal */}</td>
                   <td className="px-5 py-3.5 text-right">
                     <button className="text-[11px] text-blue-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity hover:text-blue-800" onClick={() => navigate("/trading")}>Trade →</button>
                   </td>
@@ -178,10 +177,10 @@ export default function DashboardPage() {
             <div className="w-9 h-9 rounded-lg bg-white/15 flex items-center justify-center mb-3">
               <Shield className="w-4 h-4 text-white" />
             </div>
-            <p className="text-sm font-semibold text-white">Blockchain Layer</p>
-            <p className="text-[11px] text-blue-200 mt-1 leading-snug">Immutable trade records, NFT certificates &amp; XAI audit trail</p>
+            <p className="text-sm font-semibold text-white">Registre d&apos;audit</p>
+            <p className="text-[11px] text-blue-200 mt-1 leading-snug">Décisions de l&apos;IA figées, chaînées et vérifiables (preuves de Merkle)</p>
             <div className="mt-3 pt-3 border-t border-white/15 flex items-center justify-between">
-              <span className="text-[10px] font-medium text-blue-300">Hyperledger Fabric</span>
+              <span className="text-[10px] font-medium text-blue-300">Chaîne HMAC · pas encore de blockchain publique</span>
               <ChevronRight className="w-3.5 h-3.5 text-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
           </div>

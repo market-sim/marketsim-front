@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
-import { coursesApi, type Course } from "../../api/endpoints";
+import { coursesApi, leaderboardApi, type Course, type LeaderboardEntry } from "../../api/endpoints";
+import { useNavigate } from "react-router";
+import { LEVEL_COLOR, LEVEL_LABEL } from "../../progression/ProgressionContext";
 import {
   LayoutDashboard,
   TrendingUp,
@@ -38,7 +40,7 @@ import {
 } from "lucide-react";
 import { fmt, pct, priceDisplay, MONO, DISPLAY, SignalBadge, SectionHeader, CardShell } from "../../shared/ui";
 import type { Signal, Sentiment, Direction, BankStatus } from "../../shared/ui";
-import { leaderboard } from "./mockData";
+import DemoBanner from "../../shared/DemoBanner";
 import AcademyPage from "./academy/AcademyPage";
 
 const levelLabel = { BEGINNER: "Beginner", INTERMEDIATE: "Intermediate", ADVANCED: "Advanced" } as const;
@@ -75,6 +77,11 @@ function CoursesView() {
   // Module 4 : cours venant du backend (GET /api/education/courses)
   const [apiCourses, setApiCourses] = useState<Course[]>([]);
   useEffect(() => { coursesApi.list().then(setApiCourses).catch(() => setApiCourses([])); }, []);
+  // Classement reel du jeu de progression (GET /api/progression/leaderboard)
+  const [board, setBoard] = useState<{ traders: number; me: LeaderboardEntry | null; top: LeaderboardEntry[] } | null>(null);
+  const [boardError, setBoardError] = useState(false);
+  useEffect(() => { leaderboardApi.get(6).then(setBoard).catch(() => setBoardError(true)); }, []);
+  const navigate = useNavigate();
   // TODO module 4 : la progression viendra d'une entite "Progression" (0 pour l'instant)
   const courses = apiCourses.map((c) => ({
     title: c.title,
@@ -86,17 +93,17 @@ function CoursesView() {
   }));
   return (
     <div className="space-y-5">
-      {/* AI Rec Banner */}
+      {/* Parcours personnalise : calcule par l'Academie a partir des vraies parties (pas de chiffre invente ici) */}
       <div className="rounded-xl p-5 text-white" style={{ background: "linear-gradient(135deg, #1D4ED8, #0F2E7A)" }}>
         <div className="flex items-start gap-4">
           <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
             <Brain className="w-5 h-5 text-white" />
           </div>
           <div className="flex-1">
-            <p className="text-sm font-semibold mb-1">AI Learning Recommendation</p>
-            <p className="text-[13px] text-blue-100 leading-relaxed">Based on your Level 4 profile and 64.3% win rate, focus on <span className="font-semibold text-white">Risk Management</span> next. Optimizing position sizing could reduce your max drawdown by an estimated 15%.</p>
+            <p className="text-sm font-semibold mb-1">Ton parcours personnalisé</p>
+            <p className="text-[13px] text-blue-100 leading-relaxed">L&apos;Académie choisit tes prochaines leçons à partir de tes vraies parties du jeu de trading (pertes, discipline, stop-loss) et de ton niveau.</p>
           </div>
-          <button className="shrink-0 bg-white/20 hover:bg-white/30 transition-colors rounded-lg px-3 py-1.5 text-xs font-medium">Start now →</button>
+          <button onClick={() => navigate("/education")} className="shrink-0 bg-white/20 hover:bg-white/30 transition-colors rounded-lg px-3 py-1.5 text-xs font-medium">Ouvrir l&apos;Académie →</button>
         </div>
       </div>
 
@@ -141,22 +148,28 @@ function CoursesView() {
         <CardShell className="p-5">
           <div className="flex items-center gap-2 mb-4">
             <Trophy className="w-4 h-4 text-amber-500" />
-            <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>Leaderboard</h3>
+            <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>Classement des traders</h3>
+            <span className="ms-auto text-[10px] text-muted-foreground">score de compétence du jeu</span>
           </div>
+          {boardError && <p className="text-xs text-muted-foreground">Classement indisponible.</p>}
+          {board && board.top.length === 0 && <p className="text-xs text-muted-foreground">Personne n&apos;a encore joué : lance une partie pour entrer au classement.</p>}
           <div className="space-y-2">
-            {leaderboard.map((entry) => (
-              <div key={entry.rank} className={`flex items-center gap-3 rounded-lg p-2.5 transition-colors ${entry.isMe ? "bg-blue-50 border border-blue-100" : "hover:bg-muted/20"}`}>
+            {board?.top.map((entry) => (
+              <div key={entry.rank} className={`flex items-center gap-3 rounded-lg p-2.5 transition-colors ${entry.me ? "bg-blue-500/10 border border-blue-500/30" : "hover:bg-muted/20"}`}>
                 <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${entry.rank === 1 ? "bg-amber-400 text-white" : entry.rank === 2 ? "bg-slate-300 text-white" : entry.rank === 3 ? "bg-amber-600/80 text-white" : "bg-muted text-muted-foreground"}`}>{entry.rank}</span>
-                <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-700 shrink-0">{entry.avatar}</div>
                 <div className="flex-1 min-w-0">
-                  <p className={`text-xs font-medium truncate ${entry.isMe ? "text-blue-700" : "text-foreground"}`}>{entry.name}{entry.isMe ? " (You)" : ""}</p>
+                  <p className={`text-xs font-medium truncate ${entry.me ? "text-blue-700 dark:text-blue-300" : "text-foreground"}`}>{entry.displayName}{entry.me ? " (toi)" : ""}</p>
+                  <p className="text-[10px]" style={{ color: LEVEL_COLOR[entry.level] }}>{LEVEL_LABEL[entry.level]}</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-xs font-semibold text-foreground" style={MONO}>{entry.score.toLocaleString()}</p>
-                  <p className="text-[10px] text-muted-foreground">{entry.winRate} WR</p>
+                  <p className="text-xs font-semibold text-foreground" style={MONO}>{entry.skillScore}/100</p>
+                  <p className="text-[10px] text-muted-foreground">{Math.round(entry.winRate * 100)} % gagnants · {entry.games} partie(s)</p>
                 </div>
               </div>
             ))}
+            {board?.me && !board.top.some((e) => e.me) && (
+              <p className="text-[11px] text-muted-foreground pt-1">Toi : {board.me.rank}{board.me.rank === 1 ? "er" : "e"} sur {board.traders}</p>
+            )}
           </div>
         </CardShell>
 
@@ -166,6 +179,7 @@ function CoursesView() {
             <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>Daily Quiz</h3>
             <span className="text-[10px] bg-amber-50 text-amber-700 font-medium px-2 py-0.5 rounded-full">+50 pts</span>
           </div>
+          <DemoBanner module="module 4 — quiz du jour" what="Ce quiz est un exemple statique, les réponses ne sont pas enregistrées" className="mb-3" />
           <div className="bg-muted/30 rounded-lg p-4 mb-4">
             <p className="text-xs text-muted-foreground mb-1">Question 2 / 5</p>
             <p className="text-sm text-foreground leading-relaxed">An RSI reading of 72 at a key resistance level typically suggests what about the asset?</p>

@@ -158,7 +158,8 @@ function RecordDetailCard({ id, onChanged }: { id: number; onChanged: () => void
 
 /** Registre d'audit : chaque decision / simulation de l'IA est figee (SHA-256), scellee en bloc (Merkle + hash chaine). */
 export default function AuditPanel({ agent, focusRecordId, onFocusConsumed }: {
-  agent: AgentConfig; focusRecordId?: number | null; onFocusConsumed?: () => void;
+  /** Sans agent (page « Registre d'audit ») : tous les enregistrements, sans filtre par agent. */
+  agent?: AgentConfig; focusRecordId?: number | null; onFocusConsumed?: () => void;
 }) {
   const [summary, setSummary] = useState<LedgerSummary | null>(null);
   const [blocks, setBlocks] = useState<LedgerBlock[]>([]);
@@ -166,7 +167,7 @@ export default function AuditPanel({ agent, focusRecordId, onFocusConsumed }: {
   const [report, setReport] = useState<LedgerChainReport | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [type, setType] = useState("");
-  const [onlyThisAgent, setOnlyThisAgent] = useState(true);
+  const [onlyThisAgent, setOnlyThisAgent] = useState(!!agent);
   const [busy, setBusy] = useState<"" | "seal" | "verify">("");
   const [error, setError] = useState("");
 
@@ -174,7 +175,7 @@ export default function AuditPanel({ agent, focusRecordId, onFocusConsumed }: {
     try {
       const [s, b, r] = await Promise.all([
         ledgerApi.summary(), ledgerApi.blocks(8),
-        ledgerApi.records({ type: type || undefined, agentId: onlyThisAgent ? agent.id : undefined, limit: 60 }),
+        ledgerApi.records({ type: type || undefined, agentId: onlyThisAgent && agent ? agent.id : undefined, limit: 60 }),
       ]);
       setSummary(s);
       setBlocks([...b].reverse());
@@ -183,7 +184,7 @@ export default function AuditPanel({ agent, focusRecordId, onFocusConsumed }: {
     } catch (e) {
       setError(errorMessage(e));
     }
-  }, [type, onlyThisAgent, agent.id]);
+  }, [type, onlyThisAgent, agent?.id]);
 
   useEffect(() => {
     refresh();
@@ -328,9 +329,11 @@ export default function AuditPanel({ agent, focusRecordId, onFocusConsumed }: {
               <option value="">Tous les types</option>
               {types.map((t) => <option key={t} value={t}>{TYPE_LABEL[t] ?? t}</option>)}
             </select>
-            <label className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-              <input type="checkbox" checked={onlyThisAgent} onChange={(e) => setOnlyThisAgent(e.target.checked)} />Cet agent
-            </label>
+            {agent && (
+              <label className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                <input type="checkbox" checked={onlyThisAgent} onChange={(e) => setOnlyThisAgent(e.target.checked)} />Cet agent
+              </label>
+            )}
             <button onClick={refresh} className="p-1.5 rounded-md text-muted-foreground hover:bg-muted/50" title="Actualiser"><RefreshCw className="w-3.5 h-3.5" /></button>
           </div>
           {records.length === 0 ? (
