@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import PromptDialog, { type PromptRequest } from "../../shared/PromptDialog";
+import ConfirmDialog, { type ConfirmRequest } from "../../shared/ConfirmDialog";
 import { Fingerprint, Loader2, Pencil, Plus, ScanFace, Trash2 } from "lucide-react";
 import { passkeyApi, type Passkey } from "../../api/endpoints";
 import { useI18n } from "../../i18n/I18nContext";
@@ -55,15 +56,24 @@ export default function PasskeysCard() {
     });
   }
 
-  async function remove(p: Passkey) {
-    if (!window.confirm(t("pk.confirmDelete", { name: p.name }))) return;
-    await passkeyApi.remove(p.id).catch((e) => setMsg({ ok: false, text: passkeyError(e) }));
-    load();
+  const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null);
+  function remove(p: Passkey) {
+    setConfirmReq({
+      title: t("pk.confirmDelete", { name: p.name }),
+      description: <p>{p.name}</p>,
+      confirmLabel: "Supprimer",
+      tone: "danger",
+      onConfirm: async () => {
+        await passkeyApi.remove(p.id).catch((e) => setMsg({ ok: false, text: passkeyError(e) }));
+        await load();
+      },
+    });
   }
 
   return (
     <CardShell className="p-5">
       <PromptDialog request={renaming} onClose={() => setRenaming(null)} />
+      <ConfirmDialog request={confirmReq} onClose={() => setConfirmReq(null)} />
       <div className="flex items-center gap-2 mb-1">
         <ScanFace className="w-4 h-4 text-emerald-500" />
         <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>{t("pk.title")}</h3>

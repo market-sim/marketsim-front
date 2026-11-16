@@ -236,3 +236,68 @@ console.log("mode debutant : tous les tests passent");
   assert.ok(t.buildProtectionUpdate(o, "-1", "").error);
   console.log("module 2 ameliorations : tous les tests passent");
 }
+
+// ======================= Module 1 : profil, mots de passe, liste admin =======================
+{
+  const src = path.join(FRONT, "src/modules/auth/userLogic.ts");
+  const js = ts.transpileModule(fs.readFileSync(src, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+  fs.writeFileSync(path.join(OUT, "userLogic.js"), js);
+  const u = require(path.join(OUT, "userLogic.js"));
+
+  // progression de niveau : seuils 25 / 50 / 75 du modele serveur
+  assert.deepStrictEqual(u.levelProgress(0), { level: "DEBUTANT", next: "INTERMEDIAIRE", pointsToNext: 25, pctInLevel: 0, index: 0 });
+  const p = u.levelProgress(60);
+  assert.strictEqual(p.level, "AVANCE");
+  assert.strictEqual(p.next, "EXPERT");
+  assert.strictEqual(p.pointsToNext, 15);
+  assert.strictEqual(p.pctInLevel, 40);
+  assert.strictEqual(u.levelProgress(100).next, null);
+  assert.strictEqual(u.levelProgress(null).level, "DEBUTANT");
+  assert.strictEqual(u.reasonText("RISK_CONTROLS_USED"), "Utilisation des stop-loss / take-profit");
+  assert.strictEqual(u.reasonText("UNKNOWN_CODE"), "UNKNOWN_CODE");
+
+  // conseils : un par critere manquant, chiffres a partir des ordres
+  const orders = [{ symbol: "AAPL", stopLoss: 180 }, { symbol: "AAPL" }, { symbol: "AAPL" }];
+  const facts = u.activityFacts(orders, 4);
+  assert.deepStrictEqual(facts, { logins: 4, orders: 3, protectedOrders: 1, symbols: 1 });
+  const tips = u.levelTips(["RISK_CONTROLS_USED"], facts);
+  assert.ok(!tips.some((t) => t.code === "RISK_CONTROLS_USED"), "critere rempli : pas de conseil");
+  assert.deepStrictEqual(tips.map((t) => t.code), ["TRADING_ACTIVITY", "DIVERSIFIED_SYMBOLS", "ENGAGED_LOGINS", "PROFILE_MAINTAINED"]);
+  const protect = u.levelTips([], facts).find((t) => t.code === "RISK_CONTROLS_USED");
+  assert.strictEqual(protect.target, 2, "40 % de 3 ordres -> 2 ordres proteges");
+  assert.strictEqual(protect.done, false, "1 ordre protege sur 2 requis");
+  const rich = u.levelTips([], { logins: 2, orders: 5, protectedOrders: 2, symbols: 2 });
+  assert.strictEqual(rich.find((t) => t.code === "TRADING_ACTIVITY").done, true, "objectif atteint -> coche");
+  assert.strictEqual(rich.find((t) => t.code === "DIVERSIFIED_SYMBOLS").done, true);
+  assert.strictEqual(rich.find((t) => t.code === "ENGAGED_LOGINS").done, false);
+  assert.strictEqual(rich.find((t) => t.code === "PROFILE_MAINTAINED").done, false, "jamais coche (donnee non exposee)");
+
+  // score de securite : haut = risque
+  assert.ok(u.securityStyle("HIGH").bar.includes("red"));
+  assert.strictEqual(u.securityStyle(null).label, "—");
+
+  // mot de passe
+  assert.strictEqual(u.passwordStrength("abc").score, 0);
+  assert.ok(u.passwordStrength("Abcdef12!xyz").score >= 3);
+  assert.ok(u.passwordStrength("abcdefgh").score < u.passwordStrength("Abcdefg1!").score);
+  assert.strictEqual(u.passwordError("abc", "abc"), "Le mot de passe doit contenir au moins 6 caractères.");
+  assert.strictEqual(u.passwordError("abcdef", "abcdeg"), "Les deux mots de passe ne correspondent pas.");
+  assert.strictEqual(u.passwordError("abcdef", "abcdef"), null);
+
+  // liste admin : recherche, filtres, tri
+  const users = [
+    { id: 1, firstName: "Sara", lastName: "Ben Ali", email: "sara@x.tn", role: "USER", level: "AVANCE", enabled: true, createdAt: "2026-10-01" },
+    { id: 2, firstName: "Admin", lastName: "Root", email: "admin@x.tn", role: "ADMIN", level: "DEBUTANT", enabled: true, createdAt: "2026-09-01" },
+    { id: 3, firstName: "Omar", lastName: "Trabelsi", email: "omar@x.tn", role: "USER", level: "EXPERT", enabled: false, createdAt: "2026-11-01" },
+  ];
+  const all = { q: "", role: "", status: "", level: "" };
+  const ids = (f, s, d) => u.filterUsers(users, { ...all, ...f }, s, d).map((x) => x.id);
+  assert.deepStrictEqual(ids({}), [1, 2, 3], "tri par nom de famille");
+  assert.deepStrictEqual(ids({ q: "OMAR" }), [3], "recherche insensible a la casse");
+  assert.deepStrictEqual(ids({ q: "x.tn", role: "USER" }), [1, 3]);
+  assert.deepStrictEqual(ids({ status: "DISABLED" }), [3]);
+  assert.deepStrictEqual(ids({ level: "AVANCE" }), [1]);
+  assert.deepStrictEqual(ids({}, "level", true), [3, 1, 2], "niveau decroissant");
+  assert.deepStrictEqual(ids({}, "createdAt"), [2, 1, 3]);
+  console.log("module 1 profil / admin : tous les tests passent");
+}

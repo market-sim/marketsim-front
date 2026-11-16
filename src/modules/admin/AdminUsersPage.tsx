@@ -5,6 +5,7 @@ import { ArrowDownWideNarrow, Download, KeyRound, LogOut, Pencil, Search, Trash2
 import EditBalanceDialog from "./EditBalanceDialog";
 import { adminApi, type AdminTraderScore, type Role, type SecurityScore, type SessionView, type TemporaryPassword, type TraderLevel, type User, type UserLevelAssessment } from "../../api/endpoints";
 import TraderLevels from "../auth/TraderLevels";
+import ConfirmDialog, { type ConfirmRequest } from "../../shared/ConfirmDialog";
 import { inputClass } from "../auth/AuthLayout";
 
 /** Champs compacts de la barre de filtres (sans la largeur pleine de inputClass). */
@@ -94,14 +95,24 @@ export default function AdminUsersPage() {
     URL.revokeObjectURL(a.href);
   };
 
-  const resetPassword = async (u: User) => {
-    if (!confirm(`Générer un mot de passe provisoire pour ${u.email} ? Ses sessions seront déconnectées.`)) return;
-    setError("");
-    try {
-      setTemp(await adminApi.resetUserPassword(u.id));
-    } catch (e) {
-      setError(errorMessage(e));
-    }
+  // Boites de confirmation (module 1, branche module1-ui-upgrade) au lieu de window.confirm
+  const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null);
+
+  const resetPassword = (u: User) => {
+    setConfirmReq({
+      title: `Mot de passe provisoire pour ${u.firstName} ${u.lastName} ?`,
+      description: <p>Un mot de passe provisoire sera généré pour <b>{u.email}</b> et <b>toutes ses sessions seront déconnectées</b>.</p>,
+      confirmLabel: "Générer",
+      tone: "danger",
+      onConfirm: async () => {
+        setError("");
+        try {
+          setTemp(await adminApi.resetUserPassword(u.id));
+        } catch (e) {
+          setError(errorMessage(e));
+        }
+      },
+    });
   };
 
   const revokeSessions = async (u: User) => {
@@ -115,19 +126,28 @@ export default function AdminUsersPage() {
   };
   useEffect(() => { load(); }, []);
 
-  const changeRole = async (u: User) => {
+  const changeRole = (u: User) => {
     const next = u.role === "ADMIN" ? "USER" : "ADMIN";
-    if (!confirm(`Passer ${u.email} en ${next} ?`)) return;
-    setError("");
-    try {
-      await adminApi.setRole(u.id, next);
-    } catch (e) {
-      setError(errorMessage(e));
-    }
-    load();
+    setConfirmReq({
+      title: `Passer ${u.firstName} ${u.lastName} en ${next} ?`,
+      description: next === "ADMIN"
+        ? <><p><b>{u.email}</b> aura accès au back-office : gestion des comptes, paramètres, journaux et anomalies.</p><p>Vous pourrez revenir en arrière à tout moment.</p></>
+        : <p><b>{u.email}</b> perdra l&apos;accès au back-office et redeviendra un utilisateur standard.</p>,
+      confirmLabel: `Passer en ${next}`,
+      tone: next === "ADMIN" ? "primary" : "danger",
+      onConfirm: async () => {
+        setError("");
+        try {
+          await adminApi.setRole(u.id, next);
+        } catch (e) {
+          setError(errorMessage(e));
+        }
+        load();
+      },
+    });
   };
 
-  const toggle = async (u: User) => {
+  const applyToggle = async (u: User) => {
     setError("");
     try {
       await adminApi.setEnabled(u.id, !u.enabled);
@@ -135,6 +155,17 @@ export default function AdminUsersPage() {
       setError(errorMessage(e));
     }
     load();
+  };
+
+  const toggle = (u: User) => {
+    if (!u.enabled) { applyToggle(u); return; }       // reactivation : sans risque, pas de confirmation
+    setConfirmReq({
+      title: `Désactiver le compte de ${u.firstName} ${u.lastName} ?`,
+      description: <p><b>{u.email}</b> ne pourra plus se connecter tant que le compte n&apos;est pas réactivé. Ses données sont conservées.</p>,
+      confirmLabel: "Désactiver",
+      tone: "danger",
+      onConfirm: () => applyToggle(u),
+    });
   };
 
   const closeDetails = () => {
@@ -152,16 +183,26 @@ export default function AdminUsersPage() {
     setLevelLoading(false);
   };
 
-  const remove = async (u: User) => {
-    if (!confirm(`Supprimer ${u.email} ?`)) return;
-    setError("");
-    try {
-      await adminApi.deleteUser(u.id);
-      if (selectedIdRef.current === u.id) closeDetails();
-    } catch (e) {
-      setError(errorMessage(e));
-    }
-    load();
+  const remove = (u: User) => {
+    setConfirmReq({
+      title: `Supprimer définitivement ${u.firstName} ${u.lastName} ?`,
+      description: <>
+        <p>Le compte <b>{u.email}</b> sera supprimé. <b>Cette action est irréversible.</b></p>
+        <p>Pour simplement bloquer l&apos;accès, préférez « Désactiver ».</p>
+      </>,
+      confirmLabel: "Supprimer définitivement",
+      tone: "danger",
+      onConfirm: async () => {
+        setError("");
+        try {
+          await adminApi.deleteUser(u.id);
+          if (selectedIdRef.current === u.id) closeDetails();
+        } catch (e) {
+          setError(errorMessage(e));
+        }
+        load();
+      },
+    });
   };
 
   const openDetails = (u: User) => {
@@ -225,6 +266,7 @@ export default function AdminUsersPage() {
 
   return (
     <CardShell className="overflow-hidden">
+      <ConfirmDialog request={confirmReq} onClose={() => setConfirmReq(null)} />
       {editBalance && (
         <EditBalanceDialog user={editBalance.user} current={editBalance.current} onClose={() => setEditBalance(null)}
           onSaved={(msg) => { setEditBalance(null); setError(""); setNotice(msg); load(); }} />

@@ -6,11 +6,13 @@ import { useAuth } from "../../auth/AuthContext";
 import { authApi } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
 import AuthLayout, { inputClass, labelClass } from "./AuthLayout";
+import PasswordField from "./PasswordField";
 
 export default function RegisterPage() {
   const { user, register } = useAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", password: "" });
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [registrationEnabled, setRegistrationEnabled] = useState<boolean | null>(null);
@@ -33,11 +35,13 @@ export default function RegisterPage() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    // politique de main (8 caracteres, une lettre, un chiffre : identique au backend), puis confirmation
     const weak = passwordProblem(form.password);
     if (weak) {
       setError(`Mot de passe : ${weak.toLowerCase()}.`);
       return;
     }
+    if (form.password !== confirmPassword) { setError("Les deux mots de passe ne correspondent pas."); return; }
     setBusy(true);
     setError("");
     try {
@@ -82,10 +86,15 @@ export default function RegisterPage() {
               <input type="email" required value={form.email} onChange={set("email")} className={inputClass} />
             </div>
             <div>
-              <label className={labelClass}>Mot de passe</label>
-              <input type="password" required minLength={8} autoComplete="new-password" value={form.password} onChange={set("password")} className={inputClass} />
+              <PasswordField label="Mot de passe (8+ caractères, une lettre et un chiffre)" autoComplete="new-password" required
+                value={form.password} onChange={(v) => setForm((f) => ({ ...f, password: v }))} />
               <PasswordStrength password={form.password} />
             </div>
+            <PasswordField label="Confirmer le mot de passe" autoComplete="new-password" required
+              value={confirmPassword} onChange={setConfirmPassword} invalid={!!confirmPassword && confirmPassword !== form.password} />
+            {confirmPassword && confirmPassword !== form.password && (
+              <p className="-mt-2 text-[11px] text-red-600">Les deux mots de passe ne correspondent pas.</p>
+            )}
             <Recaptcha ref={captchaRef} onToken={setCaptcha} onReady={setCaptchaOn} />
             {error && <p className="text-xs text-red-600">{error}</p>}
             <button disabled={busy || registrationEnabled === null || captchaOn === null || (captchaOn && !captcha)} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 transition-colors">
