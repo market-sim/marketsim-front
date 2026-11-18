@@ -262,8 +262,8 @@ export interface BacktestComparisonRequest extends Omit<BacktestRequest, "strate
   strategyIds: number[];
 }
 
+/** Courbes d'une strategie comparee : un point par seance, aux dates communes BacktestComparison.dates. */
 export interface BacktestComparisonCurve {
-  dates: string[];
   equity: number[];
   drawdown: number[];
 }
@@ -291,6 +291,101 @@ export interface BacktestComparison {
   buyHold: number[];
   strategies: StrategyComparison[];
 }
+
+// --- Analyse fondamentale (rapports annuels 10-K de la SEC, actions seulement) ---
+export type FundamentalItem =
+  | "REVENUE" | "NET_INCOME" | "EPS_DILUTED" | "EQUITY" | "TOTAL_DEBT" | "SHARES_OUTSTANDING" | "DIVIDEND_PER_SHARE";
+export type FundamentalUnit = "USD" | "USD_PER_SHARE" | "SHARES";
+export type FundamentalRatio =
+  | "PER" | "PRICE_TO_BOOK" | "EPS" | "ROE" | "NET_MARGIN" | "DEBT_TO_EQUITY" | "DIVIDEND_YIELD"
+  | "REVENUE_GROWTH" | "NET_INCOME_GROWTH";
+/** MULTIPLE = nombre de fois, USD = dollars par action, RATE = fraction (0.25 = 25 %). */
+export type RatioUnit = "MULTIPLE" | "USD" | "RATE";
+/** Position par rapport aux autres actions analysees. */
+export type RatioLevel = "LOW" | "MEDIUM" | "HIGH";
+/** A jour (moins de 30 jours), ancien, ou jamais telecharge. */
+export type FundamentalsStatus = "FRESH" | "STALE" | "MISSING";
+
+/** Une donnee d'un exercice : value null = « non disponible » (jamais 0). */
+export interface FundamentalItemValue {
+  item: FundamentalItem;
+  label: string;
+  unit: FundamentalUnit;
+  value: number | null;
+  /** libelle(s) XBRL d'ou vient la valeur, ex. "us-gaap:NetIncomeLoss" */
+  concept: string | null;
+}
+
+export interface FundamentalYear {
+  fiscalYear: number;
+  start: string;
+  end: string;
+  accession: string;
+  filed: string;
+  /** page du rapport 10-K sur le site de la SEC */
+  reportUrl: string | null;
+  items: FundamentalItemValue[];
+}
+
+export interface FundamentalRatioView {
+  ratio: FundamentalRatio;
+  label: string;
+  unit: RatioUnit;
+  formula: string;
+  explanation: string;
+  value: number | null;
+  unavailableReason: string | null;
+  level: RatioLevel | null;
+  /** nombre d'actions qui ont ce ratio (celle-ci comprise) */
+  compared: number;
+}
+
+export interface FundamentalsDetail {
+  symbol: string;
+  name: string;
+  cik: string;
+  companyName: string;
+  source: string;
+  downloadedAt: string;
+  ageDays: number;
+  /** FRESH, ou STALE si la SEC n'a pas repondu et que le cache ancien est utilise */
+  status: Exclude<FundamentalsStatus, "MISSING">;
+  warning: string | null;
+  price: number | null;
+  priceDate: string | null;
+  /** du plus recent au plus ancien */
+  years: FundamentalYear[];
+  ratios: FundamentalRatioView[];
+}
+
+export interface FundamentalsSummary {
+  symbol: string;
+  name: string;
+  status: FundamentalsStatus;
+  downloadedAt: string | null;
+  fiscalYear: number | null;
+  fiscalYearEnd: string | null;
+  ratios: FundamentalRatioView[];
+}
+
+export interface FundamentalsOverview {
+  source: string;
+  refreshAfterDays: number;
+  /** probleme de configuration du serveur (User-Agent SEC absent), null sinon */
+  configurationProblem: string | null;
+  stocks: FundamentalsSummary[];
+}
+
+export const fundamentalsApi = {
+  /** Etat des donnees de chaque action (cache seulement, aucun appel a la SEC). */
+  overview: () => api.get<FundamentalsOverview>("/analysis/fundamentals").then((r) => r.data),
+  /** Analyse complete ; telecharge depuis la SEC si le cache est absent ou a plus de 30 jours. */
+  get: (symbol: string) =>
+    api.get<FundamentalsDetail>(`/analysis/fundamentals/${encodeURIComponent(symbol)}`).then((r) => r.data),
+  /** Reserve a l'administrateur. */
+  refresh: (symbol: string) =>
+    api.post<FundamentalsDetail>(`/analysis/fundamentals/${encodeURIComponent(symbol)}/refresh`).then((r) => r.data),
+};
 
 export const backtestsApi = {
   run: (req: BacktestRequest) => api.post<BacktestDetail>("/analysis/backtests", req).then((r) => r.data),

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
-import { FlaskConical, GitCompare, History, LineChart, ListChecks } from "lucide-react";
+import { FlaskConical, GitCompare, History, Landmark, LineChart, ListChecks } from "lucide-react";
 import { assetsApi, strategiesApi, type Asset, type BacktestComparison, type BacktestDetail, type Strategy } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../app/components/ui/tabs";
@@ -8,16 +8,18 @@ import { useCoachFocus } from "../coach/coachFocus";
 import { DEFAULT_BACKTEST_FORM, type BacktestFormValues } from "./backtestForm";
 import BacktestTab from "./components/BacktestTab";
 import ComparisonTab from "./components/ComparisonTab";
+import FundamentalsTab from "./components/FundamentalsTab";
 import HistoryTab from "./components/HistoryTab";
 import StrategiesTab from "./components/StrategiesTab";
 import TechnicalTab from "./components/TechnicalTab";
 import { DEFAULT_TECH, type TechSettings } from "./technical";
 import { DEFAULT_COMPARISON_FORM, type ComparisonFormValues } from "./comparison";
 
-type TabId = "technique" | "strategies" | "backtest" | "historique" | "comparaison";
+type TabId = "technique" | "fondamentale" | "strategies" | "backtest" | "historique" | "comparaison";
 
 const TABS: { id: TabId; label: string; Icon: typeof LineChart }[] = [
   { id: "technique", label: "Analyse technique", Icon: LineChart },
+  { id: "fondamentale", label: "Analyse fondamentale", Icon: Landmark },
   { id: "strategies", label: "Stratégies", Icon: ListChecks },
   { id: "backtest", label: "Backtest", Icon: FlaskConical },
   { id: "historique", label: "Historique", Icon: History },
@@ -56,6 +58,8 @@ export default function AnalysisPage() {
   const [result, setResult] = useState<BacktestDetail | null>(null);
   const [comparisonForm, setComparisonForm] = useState<ComparisonFormValues>(DEFAULT_COMPARISON_FORM);
   const [comparison, setComparison] = useState<BacktestComparison | null>(null);
+  /** action affichee dans l'analyse fondamentale (vide : la premiere de la liste) */
+  const [fundamentalSymbol, setFundamentalSymbol] = useState("");
 
   const loadStrategies = useCallback(async () => {
     setStrategiesLoading(true);
@@ -102,6 +106,10 @@ export default function AnalysisPage() {
 
       <TabsContent value="technique">
         <TechnicalTab assets={assets} assetsLoading={assetsLoading} assetsError={assetsError} settings={tech} onChange={setTech} />
+      </TabsContent>
+
+      <TabsContent value="fondamentale">
+        <FundamentalsTab symbol={fundamentalSymbol} onSymbolChange={setFundamentalSymbol} />
       </TabsContent>
 
       <TabsContent value="strategies">

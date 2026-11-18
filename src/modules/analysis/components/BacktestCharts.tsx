@@ -49,10 +49,10 @@ export function EquityChart({ rows, splitAt }: Props) {
 
 /**
  * Graduations rondes de l'axe du drawdown (0 %, -10 %, -20 %...) : le pas (1, 2, 5, 10, 20 ou 25 points)
- * est le plus petit qui couvre le pire drawdown en quatre graduations au plus.
+ * est le plus petit qui couvre le pire drawdown (ex. -0.244) en quatre graduations au plus.
+ * Aussi utilise par l'onglet Comparaison.
  */
-function drawdownAxis(rows: CurveRow[]): { floor: number; ticks: number[] } {
-  const worst = rows.reduce((min, r) => Math.min(min, r.drawdown), 0);     // ex. -0.244
+export function drawdownAxis(worst: number): { floor: number; ticks: number[] } {
   const step = [0.01, 0.02, 0.05, 0.1, 0.2, 0.25].find((s) => -worst / s <= 4) ?? 0.25;
   const count = Math.max(1, Math.ceil(-worst / step - 1e-9));
   const ticks = Array.from({ length: count + 1 }, (_, i) => -Number((i * step).toFixed(2)));
@@ -63,7 +63,7 @@ function drawdownAxis(rows: CurveRow[]): { floor: number; ticks: number[] } {
 export function DrawdownChart({ rows, splitAt }: Props) {
   const c = useChartColors();
   const xAxis = useTimeAxis(rows, c);
-  const { floor, ticks } = drawdownAxis(rows);
+  const { floor, ticks } = drawdownAxis(rows.reduce((min, r) => Math.min(min, r.drawdown), 0));
   const series: TooltipSeries[] = [{ key: "drawdown", label: "Drawdown", color: c.down, format: (v) => pctSigned(v) }];
   return (
     <ResponsiveContainer width="100%" height="100%">

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ChevronDown, GitCompare, Play } from "lucide-react";
 import { backtestsApi, type Asset, type BacktestComparison, type Strategy } from "../../../api/endpoints";
 import { errorMessage } from "../../../api/client";
@@ -9,13 +9,16 @@ import { Input } from "../../../app/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../app/components/ui/select";
 import { Skeleton } from "../../../app/components/ui/skeleton";
 import {
-  buildComparisonRequest, type ComparisonErrors, type ComparisonFormValues,
+  buildComparisonRequest, DEFAULT_COMPARISON_FORM, MAX_COMPARED, MIN_COMPARED,
+  type ComparisonErrors, type ComparisonFormValues,
 } from "../comparison";
 import { isNotFound } from "../errors";
 import { todayIso } from "../format";
 import { paramsSummary, typeShort } from "../strategyRules";
-import { EmptyState, ErrorBanner, Field, FIELD_DARK } from "./Feedback";
 import ComparisonResult from "./ComparisonResult";
+import { EmptyState, ErrorBanner, Field, FIELD_DARK } from "./Feedback";
+
+type SettingField = Exclude<keyof ComparisonFormValues, "strategyIds">;
 
 interface Props {
   strategies: Strategy[];
@@ -24,53 +27,72 @@ interface Props {
   assets: Asset[];
   assetsLoading: boolean;
   assetsError: string;
+  /** saisie gardee par la page : elle survit au changement d'onglet */
   values: ComparisonFormValues;
   onValuesChange: (values: ComparisonFormValues) => void;
+  /** derniere comparaison lancee dans cette session (non enregistree) */
   result: BacktestComparison | null;
   onResult: (result: BacktestComparison) => void;
   onGoToStrategies: () => void;
   onReloadStrategies: () => void;
 }
 
-/** Comparaison simultanee de deux a cinq strategies sur un actif et des reglages partages. */
+/**
+ * Onglet « Comparaison » : 2 a 5 strategies rejouees sur le meme actif, la meme periode et les memes reglages
+ * (POST /api/analysis/backtests/compare). Le resultat est calcule a la demande et n'est pas enregistre.
+ */
 export default function ComparisonTab({
   strategies, strategiesLoading, strategiesError, assets, assetsLoading, assetsError,
   values, onValuesChange, result, onResult, onGoToStrategies, onReloadStrategies,
 }: Props) {
   const [submitted, setSubmitted] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [advanced, setAdvanced] = useState(values.slippagePct !== "0" || values.positionPct !== "100");
-  const [errors, setErrors] = useState<ComparisonErrors>({});
   const [error, setError] = useState("");
+  const [advanced, setAdvanced] = useState(
+    values.slippagePct !== DEFAULT_COMPARISON_FORM.slippagePct || values.positionPct !== DEFAULT_COMPARISON_FORM.positionPct,
+  );
+  const resultRef = useRef<HTMLDivElement>(null);
+  /** vrai juste apres un lancement reussi : le nouveau resultat doit etre amene a l'ecran */
+  const scrollToResult = useRef(false);
 
-  const testable = strategies.filter((strategy) => strategy.type && strategy.id != null);
-  const shownError = (field: keyof ComparisonErrors) => submitted ? errors[field] : undefined;
-  const set = (field: keyof Omit<ComparisonFormValues, "strategyIds">) => (value: string) =>
-    onValuesChange({ ...values, [field]: value });
-  const toggleStrategy = (strategyId: number, checked: boolean) => {
-    const id = String(strategyId);
-    const strategyIds = checked
-      ? [...values.strategyIds, id]
-      : values.strategyIds.filter((selected) => selected !== id);
-    onValuesChange({ ...values, strategyIds });
-    if (submitted) {
-      const { errors: next } = buildComparisonRequest({ ...values, strategyIds });
-      setErrors(next);
-    }
-  };
+  useEffect(() => {
+    if (!scrollToResult.current) return;
+    scrollToResult.current = false;
+    resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [result]);
 
-  const run = async (event: FormEvent) => {
-    event.preventDefault();
+  /** seules les strategies qui ont un type peuvent etre testees */
+  const testable = strategies.filter((s) => s.type && s.id != null);
+  /**
+   * Une strategie supprimee entre-temps (onglet Strategies, autre fenetre) ne compte plus comme choisie :
+   * elle n'est plus affichee, l'utilisateur ne pourrait donc pas la decocher.
+   */
+  const selectedIds = values.strategyIds.filter((id) => testable.some((s) => String(s.id) === id));
+  const checkedValues = { ...values, strategyIds: selectedIds };
+  // erreurs recalculees a chaque saisie, affichees seulement apres le premier envoi
+  const { errors } = buildComparisonRequest(checkedValues);
+  const shownError = (field: keyof ComparisonErrors) => (submitted ? errors[field] : undefined);
+  const set = (field: SettingField) => (value: string) => onValuesChange({ ...values, [field]: value });
+
+  const toggleStrategy = (id: string, checked: boolean) => onValuesChange({
+    ...values,
+    strategyIds: checked ? [...selectedIds, id] : selectedIds.filter((x) => x !== id),
+  });
+
+  const run = async (e: FormEvent) => {
+    e.preventDefault();
     setSubmitted(true);
-    const built = buildComparisonRequest(values);
-    setErrors(built.errors);
-    if (!built.request) return;
+    const { request } = buildComparisonRequest(checkedValues);
+    if (!request) return;
     setBusy(true);
     setError("");
     try {
-      onResult(await backtestsApi.compare(built.request));
+      const comparison = await backtestsApi.compare(request);
+      scrollToResult.current = true;
+      onResult(comparison);
     } catch (err) {
       setError(errorMessage(err));
+      // strategie supprimee entre-temps : la liste est rechargee, elle disparait alors de la selection
       if (isNotFound(err)) onReloadStrategies();
     } finally {
       setBusy(false);
@@ -78,146 +100,136 @@ export default function ComparisonTab({
   };
 
   if ((strategiesLoading && strategies.length === 0) || (assetsLoading && assets.length === 0)) {
-    return <CardShell className="space-y-3 p-5"><Skeleton className="h-5 w-56" /><Skeleton className="h-24 w-full" /></CardShell>;
+    return <CardShell className="p-5 space-y-3"><Skeleton className="h-5 w-56" /><Skeleton className="h-24 w-full" /></CardShell>;
   }
-  if (strategiesError || assetsError) {
-    return (
-      <div className="space-y-3">
-        {strategiesError && <ErrorBanner message={strategiesError} onRetry={onReloadStrategies} />}
-        {assetsError && <ErrorBanner message={assetsError} />}
-      </div>
-    );
+  if (strategies.length === 0 && strategiesError) {
+    return <CardShell className="p-4"><ErrorBanner message={strategiesError} onRetry={onReloadStrategies} /></CardShell>;
   }
-  if (testable.length === 0 || assets.length === 0) {
-    const noStrategies = testable.length === 0;
+  if (testable.length < MIN_COMPARED) {
     return (
       <CardShell>
-        <EmptyState icon={<GitCompare className="h-6 w-6" />}
-          title={noStrategies ? "Aucune stratégie à comparer" : "Aucun actif disponible"}
-          text={noStrategies
-            ? strategies.length === 0
-              ? "Créez au moins deux stratégies à règles pour comparer leurs résultats."
-              : "Les stratégies sans type ne peuvent pas être comparées. Modifiez-en ou créez-en avec une règle."
-            : "La liste des actifs est vide : aucun cours ne peut être simulé pour l'instant."}
-          action={noStrategies ? <Button size="sm" onClick={onGoToStrategies}>Aller aux stratégies</Button> : undefined} />
+        <EmptyState icon={<GitCompare className="w-6 h-6" />} title="Pas assez de stratégies à comparer"
+          text={testable.length === 0 && strategies.length === 0
+            ? "Une comparaison rejoue au moins deux stratégies sur le même historique. Commencez par en créer deux."
+            : `Une comparaison demande au moins deux stratégies avec un type ; vous en avez ${testable.length}. `
+              + "Créez-en une autre, ou modifiez une ancienne stratégie pour choisir sa règle."}
+          action={<Button size="sm" onClick={onGoToStrategies}>Aller aux stratégies</Button>} />
       </CardShell>
     );
   }
 
-  const numberField = (
-    field: keyof Omit<ComparisonFormValues, "strategyIds">,
-    label: string,
-    options: { hint?: string; placeholder?: string; step?: string } = {},
-  ) => (
-    <Field label={label} htmlFor={`compare-${field}`} error={shownError(field)}>
-      <Input id={`compare-${field}`} className={FIELD_DARK} type="number" inputMode="decimal" min="0"
-        step={options.step ?? "any"} style={MONO} placeholder={options.placeholder} value={values[field]}
-        aria-invalid={!!shownError(field)} onChange={(event) => set(field)(event.target.value)} />
-      {options.hint && !shownError(field) && <p className="mt-1 text-[11px] text-muted-foreground">{options.hint}</p>}
+  /** Champ numerique (saisie en texte, validee a l'envoi). */
+  const numberField = (field: SettingField, label: string, options: { hint?: string; placeholder?: string; step?: string } = {}) => (
+    <Field label={label} htmlFor={`cmp-${field}`} error={shownError(field)} hint={options.hint}>
+      <Input id={`cmp-${field}`} className={FIELD_DARK} type="number" inputMode="decimal" min="0" step={options.step ?? "any"} style={MONO}
+        placeholder={options.placeholder} value={values[field]} aria-invalid={!!shownError(field)}
+        onChange={(e) => set(field)(e.target.value)} />
     </Field>
   );
   const dateField = (field: "from" | "to" | "splitDate", label: string, hint: string) => (
-    <Field label={label} htmlFor={`compare-${field}`} error={shownError(field)} hint={hint}>
-      <Input id={`compare-${field}`} className={FIELD_DARK} type="date" max={todayIso()} value={values[field]}
-        aria-invalid={!!shownError(field)} onChange={(event) => set(field)(event.target.value)} />
+    <Field label={label} htmlFor={`cmp-${field}`} error={shownError(field)} hint={hint}>
+      <Input id={`cmp-${field}`} className={FIELD_DARK} type="date" max={todayIso()} value={values[field]} aria-invalid={!!shownError(field)}
+        onChange={(e) => set(field)(e.target.value)} />
     </Field>
   );
 
   return (
     <div className="space-y-4">
       <CardShell className="p-5">
-        <div className="mb-4 flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50">
-            <GitCompare className="h-5 w-5 text-blue-600" />
+        <div className="flex items-start gap-3 mb-4">
+          <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+            <GitCompare className="w-5 h-5 text-blue-600" />
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-foreground" style={DISPLAY}>Comparer des stratégies</h2>
-            <p className="mt-0.5 max-w-3xl text-[12px] text-muted-foreground">
-              Les stratégies sont rejouées sur les mêmes clôtures historiques et avec des réglages identiques.
-              Le signal est pris à la clôture de J et exécuté à la clôture de J+1.
+            <h3 className="text-sm font-semibold text-foreground" style={DISPLAY}>Comparer des stratégies</h3>
+            <p className="text-[12px] text-muted-foreground mt-0.5 max-w-3xl">
+              Les stratégies choisies sont rejouées sur le même actif, la même période et avec les mêmes réglages, puis
+              comparées entre elles et au buy &amp; hold. Signal à la clôture du jour J, ordre exécuté à la clôture du jour J+1.
             </p>
           </div>
         </div>
 
+        {strategiesError && <div className="mb-4"><ErrorBanner message={strategiesError} onRetry={onReloadStrategies} /></div>}
+        {assetsError && <div className="mb-4"><ErrorBanner message={assetsError} /></div>}
+
         <form onSubmit={run} noValidate className="space-y-4">
           <fieldset>
-            <legend className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Stratégies · 2 à 5
+            <legend className="block text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
+              Stratégies à comparer · {selectedIds.length} / {MAX_COMPARED}
             </legend>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {strategies.map((strategy) => {
-                const eligible = !!strategy.type && strategy.id != null;
-                const checked = strategy.id != null && values.strategyIds.includes(String(strategy.id));
-                const limitReached = values.strategyIds.length >= 5 && !checked;
+              {strategies.map((s) => {
+                const id = String(s.id);
+                const eligible = !!s.type && s.id != null;
+                const checked = eligible && selectedIds.includes(id);
+                const full = !checked && selectedIds.length >= MAX_COMPARED;
+                const disabled = !eligible || full;
                 return (
-                  <label key={strategy.id ?? strategy.name}
-                    className={`flex min-w-0 items-start gap-2.5 rounded-lg border border-border/60 p-3 transition-colors ${
-                      !eligible || limitReached ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-muted/20"
-                    }`}>
-                    <Checkbox checked={checked} disabled={!eligible || limitReached}
-                      aria-label={`Comparer ${strategy.name}`}
-                      onCheckedChange={(value) => strategy.id != null && toggleStrategy(strategy.id, value === true)} />
+                  <label key={s.id ?? s.name} htmlFor={`cmp-strategy-${id}`}
+                    title={!eligible ? "Choisissez d'abord un type pour cette stratégie (onglet Stratégies)" : full ? `${MAX_COMPARED} stratégies au plus` : undefined}
+                    className={`flex min-w-0 items-start gap-2.5 rounded-lg border p-3 transition-colors ${checked ? "border-blue-200 bg-blue-50/60" : "border-border/60"} ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-muted/20"}`}>
+                    <Checkbox id={`cmp-strategy-${id}`} className="mt-0.5" checked={checked} disabled={disabled} aria-label={`Comparer ${s.name}`}
+                      onCheckedChange={(v) => toggleStrategy(id, v === true)} />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-medium text-foreground" title={strategy.name}>{strategy.name}</span>
-                      <span className="mt-0.5 block text-[10px] text-muted-foreground">
-                        {strategy.type ? typeShort[strategy.type] : "Type à définir"}
-                        {strategy.type && ` · ${paramsSummary(strategy.type, strategy.params)}`}
+                      <span className="block truncate text-[13px] font-medium text-foreground" title={s.name}>{s.name}</span>
+                      <span className="mt-0.5 block truncate text-[11px] text-muted-foreground" style={MONO}>
+                        {s.type ? `${typeShort[s.type]} · ${paramsSummary(s.type, s.params)}` : "Type à définir"}
                       </span>
                     </span>
                   </label>
                 );
               })}
             </div>
-            {shownError("strategyIds") && <p role="alert" className="mt-1 text-[11px] text-red-600">{shownError("strategyIds")}</p>}
+            {shownError("strategyIds")
+              ? <p role="alert" className="text-[11px] text-red-600 mt-1.5">{shownError("strategyIds")}</p>
+              : <p className="text-[11px] text-muted-foreground mt-1.5">Entre {MIN_COMPARED} et {MAX_COMPARED} stratégies ayant un type.</p>}
           </fieldset>
 
-          <div className="grid grid-cols-1 gap-x-3 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-4">
             <Field label="Actif" className="sm:col-span-2" error={shownError("symbol")}>
               <Select value={values.symbol} onValueChange={set("symbol")}>
-                <SelectTrigger className={FIELD_DARK} aria-label="Actif" aria-invalid={!!shownError("symbol")}>
-                  <SelectValue placeholder="Choisir un actif" />
-                </SelectTrigger>
+                <SelectTrigger className={FIELD_DARK} aria-label="Actif" aria-invalid={!!shownError("symbol")}><SelectValue placeholder="Choisir un actif" /></SelectTrigger>
                 <SelectContent>
-                  {assets.map((asset) => <SelectItem key={asset.symbol} value={asset.symbol}>{asset.symbol} — {asset.name}</SelectItem>)}
+                  {assets.map((a) => <SelectItem key={a.symbol} value={a.symbol}>{a.symbol} — {a.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </Field>
-            {dateField("from", "Début de la période", "Vide : début de l'historique")}
-            {dateField("to", "Fin de la période", "Vide : dernière séance")}
+            {dateField("from", "Début de la période", "Vide : début de l'historique (10 ans)")}
+            {dateField("to", "Fin de la période", "Vide : dernière séance disponible")}
             {numberField("capital", "Capital initial ($)", { step: "100" })}
             {numberField("feePct", "Frais par ordre (%)", { hint: "0,1 % par défaut" })}
-            {numberField("stopLossPct", "Stop-loss (%)", { placeholder: "Aucun" })}
-            {numberField("takeProfitPct", "Take-profit (%)", { placeholder: "Aucun" })}
+            {numberField("stopLossPct", "Stop-loss (%)", { placeholder: "Aucun", hint: "Vente si la perte atteint ce seuil" })}
+            {numberField("takeProfitPct", "Take-profit (%)", { placeholder: "Aucun", hint: "Vente si le gain atteint ce seuil" })}
             <div className="sm:col-span-2">
-              {dateField("splitDate", "Date de coupure entraînement / test", "Facultatif : métriques séparées avant et après")}
+              {dateField("splitDate", "Date de coupure entraînement / test", "Facultatif : les métriques sont aussi calculées avant et après cette date")}
             </div>
           </div>
 
           <div>
-            <button type="button" onClick={() => setAdvanced((open) => !open)} aria-expanded={advanced}
+            <button type="button" onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}
               className="inline-flex items-center gap-1 text-[12px] font-medium text-blue-600">
-              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${advanced ? "rotate-180" : ""}`} />
-              Options avancées
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${advanced ? "rotate-180" : ""}`} />Options avancées
             </button>
             {advanced && (
-              <div className="mt-3 grid grid-cols-1 gap-x-3 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
-                {numberField("slippagePct", "Glissement de prix (%)", { hint: "Achat plus cher, vente moins chère" })}
-                {numberField("positionPct", "Part du capital engagée (%)", { hint: "Part investie à chaque achat" })}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-4 mt-3">
+                {numberField("slippagePct", "Glissement de prix (%)", { hint: "Achat un peu plus cher, vente un peu moins cher" })}
+                {numberField("positionPct", "Part du capital engagée (%)", { hint: "Part des liquidités investie à chaque achat" })}
               </div>
             )}
           </div>
 
           {error && <ErrorBanner message={error} />}
+
           <Button type="submit" disabled={busy}><Play />{busy ? "Comparaison en cours…" : "Lancer la comparaison"}</Button>
         </form>
       </CardShell>
 
-      <div className={`transition-opacity ${busy ? "opacity-50" : ""}`}>
+      <div ref={resultRef} className={`scroll-mt-4 transition-opacity ${busy ? "opacity-50" : ""}`}>
         {result ? (
           <ComparisonResult result={result} />
         ) : (
           <CardShell className="p-8 text-center text-sm text-muted-foreground">
-            Choisissez au moins deux stratégies pour afficher leurs métriques et leurs courbes comparées.
+            Le résultat s'affichera ici : courbes superposées, classement, métriques côte à côte et export CSV.
           </CardShell>
         )}
       </div>

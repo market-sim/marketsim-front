@@ -35,6 +35,26 @@ const DARK: ChartColors = {
   up: "#34D399", down: "#F87171",
 };
 
+/*
+ * Couleurs des strategies comparees (jusqu'a 5 courbes qui se croisent), verifiees avec un script de validation
+ * de palette (ecart de couleur en vision normale et pour les daltoniens, sur les fonds #FFFFFF et #111A2E) :
+ * - les trois premieres (bleu, orange, vert d'eau) se distinguent deux a deux, y compris pour les daltoniens ;
+ * - au-dela de trois, aucune palette ne garantit cela pour toutes les paires (ex. bleu et violet se confondent
+ *   pour un daltonien) : les 4e et 5e courbes sont donc aussi dessinees en tirets et en pointilles.
+ * Le vert d'eau et le rose sont un peu pales sur fond blanc : la legende, l'infobulle et le tableau donnent
+ * toujours le nom de la strategie. Le vert et le rouge des gains et pertes ne sont pas utilises ici.
+ */
+const SERIES_LIGHT = ["#2563EB", "#EB6834", "#1BAF7A", "#7C3AED", "#E87BA4"];
+const SERIES_DARK = ["#3B82F6", "#D95926", "#199E70", "#8B5CF6", "#D55181"];
+
+/** Trait de chaque strategie comparee : plein pour les trois premieres, tirets puis pointilles ensuite. */
+export const SERIES_DASH: (string | undefined)[] = [undefined, undefined, undefined, "6 4", "2 3"];
+
+/** Couleurs des strategies comparees, dans le theme affiche (la couleur suit la position de la strategie). */
+export function useSeriesColors(): string[] {
+  return useTheme().resolved === "dark" ? SERIES_DARK : SERIES_LIGHT;
+}
+
 /** Couleurs du theme actuellement affiche. */
 export function useChartColors(): ChartColors {
   return useTheme().resolved === "dark" ? DARK : LIGHT;
