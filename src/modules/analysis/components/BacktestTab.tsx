@@ -28,18 +28,34 @@ interface Props {
   onStrategyGone: () => void;
   onGoToStrategies: () => void;
   onOpenHistory: () => void;
+  /** vrai quand un backtest doit etre lance sans clic (« Relancer avec les memes reglages » de l'historique) */
+  autoRun?: boolean;
+  /** appele au lancement automatique : la page remet `autoRun` a faux */
+  onAutoRunStarted?: () => void;
+  /** vrai quand les reglages ont ete preremplis avec les parametres par defaut de l'administrateur */
+  adminDefaults?: boolean;
 }
 
 /** Onglet « Backtest » : formulaire de lancement (POST /api/analysis/backtests) puis ecran de resultats. */
 export default function BacktestTab({
   strategies, strategiesLoading, assets, values, onValuesChange, result, onResult, onStrategyGone, onGoToStrategies, onOpenHistory,
+  autoRun = false, onAutoRunStarted, adminDefaults = false,
 }: Props) {
   const [submitted, setSubmitted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [advanced, setAdvanced] = useState(
-    values.slippagePct !== DEFAULT_BACKTEST_FORM.slippagePct || values.positionPct !== DEFAULT_BACKTEST_FORM.positionPct,
+    values.slippagePct !== DEFAULT_BACKTEST_FORM.slippagePct || values.positionPct !== DEFAULT_BACKTEST_FORM.positionPct
+    || values.riskFreePct !== DEFAULT_BACKTEST_FORM.riskFreePct,
   );
+  // les parametres par defaut arrivent apres l'ouverture : on montre les options avancees s'ils en utilisent
+  useEffect(() => {
+    if (adminDefaults && (values.slippagePct !== DEFAULT_BACKTEST_FORM.slippagePct
+      || values.positionPct !== DEFAULT_BACKTEST_FORM.positionPct || values.riskFreePct !== DEFAULT_BACKTEST_FORM.riskFreePct)) {
+      setAdvanced(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminDefaults]);
   const resultRef = useRef<HTMLDivElement>(null);
   /** vrai juste apres un lancement reussi : le nouveau resultat doit etre amene a l'ecran */
   const scrollToResult = useRef(false);
@@ -60,8 +76,30 @@ export default function BacktestTab({
   const shownError = (field: BacktestField) => (submitted ? errors[field] : undefined);
   const set = (field: BacktestField) => (value: string) => onValuesChange({ ...values, [field]: value });
 
-  const run = async (e: FormEvent) => {
+  const submit = (e: FormEvent) => {
     e.preventDefault();
+    void run();
+  };
+
+  // « Relancer avec les memes reglages » : la page a rempli le formulaire, on lance comme un clic sur le bouton.
+  // L'onglet est monte a ce moment-la ; la reference evite un second lancement (double effet du mode strict).
+  const autoRunDone = useRef(false);
+  useEffect(() => {
+    if (!autoRun) {
+      autoRunDone.current = false;
+      return;
+    }
+    if (autoRunDone.current) return;
+    autoRunDone.current = true;
+    onAutoRunStarted?.();
+    // les options avancees s'ouvrent si les reglages relances en utilisent
+    if (values.slippagePct !== DEFAULT_BACKTEST_FORM.slippagePct || values.positionPct !== DEFAULT_BACKTEST_FORM.positionPct
+      || values.riskFreePct !== DEFAULT_BACKTEST_FORM.riskFreePct) setAdvanced(true);
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRun]);
+
+  const run = async () => {
     setSubmitted(true);
     const { request } = buildBacktestRequest(checkedValues);
     if (!request) return;
@@ -126,7 +164,7 @@ export default function BacktestTab({
           </div>
         </div>
 
-        <form onSubmit={run} noValidate className="space-y-4">
+        <form onSubmit={submit} noValidate className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-4">
             <Field label="Stratégie" className="sm:col-span-2" error={shownError("strategyId")}
               hint={selected?.type ? `${paramsSummary(selected.type, selected.params)} — ${typeRule[selected.type]}` : undefined}>
@@ -158,6 +196,10 @@ export default function BacktestTab({
             </div>
           </div>
 
+          {adminDefaults && (
+            <p className="text-[11px] text-muted-foreground">Réglages préremplis avec les valeurs par défaut définies par l'administrateur.</p>
+          )}
+
           <div>
             <button type="button" onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}
               className="inline-flex items-center gap-1 text-[12px] font-medium text-blue-600">
@@ -167,6 +209,7 @@ export default function BacktestTab({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-4 mt-3">
                 {numberField("slippagePct", "Glissement de prix (%)", { hint: "Achat un peu plus cher, vente un peu moins cher" })}
                 {numberField("positionPct", "Part du capital engagée (%)", { hint: "Part des liquidités investie à chaque achat" })}
+                {numberField("riskFreePct", "Taux sans risque (% par an)", { hint: "Sharpe et Sortino mesurent le rendement au-dessus de ce taux" })}
               </div>
             )}
           </div>

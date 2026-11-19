@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, History, Trash2 } from "lucide-react";
-import { backtestsApi, comparisonsApi, type BacktestDetail, type BacktestSummary, type Strategy } from "../../../api/endpoints";
+import {
+  backtestsApi, comparisonsApi, type BacktestDetail, type BacktestSummary, type SavedComparisonDetail, type Strategy,
+} from "../../../api/endpoints";
+import { sameParams } from "../comparison";
+import DataCheckNotice from "./DataCheckNotice";
 import { errorMessage } from "../../../api/client";
 import { CardShell, DISPLAY, MONO } from "../../../shared/ui";
 import { Button } from "../../../app/components/ui/button";
@@ -29,6 +33,8 @@ interface HistoryProps extends Props {
   openComparisonId: number | null;
   onOpenComparison: (id: number | null) => void;
   onGoToComparison: () => void;
+  /** « Relancer avec les memes reglages » d'une comparaison enregistree */
+  onRerunComparison: (detail: SavedComparisonDetail) => void;
 }
 
 /**
@@ -36,7 +42,7 @@ interface HistoryProps extends Props {
  * Le nombre d'elements de chaque section est affiche sur son bouton.
  */
 export default function HistoryTab({
-  section, onSection, openComparisonId, onOpenComparison, onGoToComparison, ...backtests
+  section, onSection, openComparisonId, onOpenComparison, onGoToComparison, onRerunComparison, ...backtests
 }: HistoryProps) {
   const [counts, setCounts] = useState<Record<HistorySection, number | null>>({ backtests: null, comparaisons: null });
   const [version, setVersion] = useState(0);
@@ -77,7 +83,7 @@ export default function HistoryTab({
       )}
       {section === "comparaisons" ? (
         <SavedComparisons openId={openComparisonId} onOpen={onOpenComparison} onChanged={refreshCounts}
-          onGoToComparison={onGoToComparison} />
+          onGoToComparison={onGoToComparison} onRerun={onRerunComparison} />
       ) : (
         <BacktestHistory {...backtests} onDeleted={(id) => { backtests.onDeleted(id); refreshCounts(); }} />
       )}
@@ -93,12 +99,14 @@ interface Props {
   /** un backtest a ete supprime : le resume de sa strategie a change cote back */
   onDeleted: (id: number) => void;
   onGoToBacktest: () => void;
+  /** « Relancer avec les memes reglages » d'un backtest enregistre */
+  onRerunBacktest: (detail: BacktestDetail) => void;
 }
 
 const ALL = "all";
 
 /** Section « Backtests » de l'historique : mes backtests passes (GET /api/analysis/backtests), detail et suppression. */
-function BacktestHistory({ strategies, openId, onOpen, onDeleted, onGoToBacktest }: Props) {
+function BacktestHistory({ strategies, openId, onOpen, onDeleted, onGoToBacktest, onRerunBacktest }: Props) {
   const [filter, setFilter] = useState(ALL);
   const [list, setList] = useState<BacktestSummary[] | null>(null);
   const [listLoading, setListLoading] = useState(false);
@@ -158,6 +166,17 @@ function BacktestHistory({ strategies, openId, onOpen, onDeleted, onGoToBacktest
             <Skeleton className="h-72 w-full" />
           </CardShell>
         )}
+        {detail && (() => {
+          // la relance utilise la strategie telle qu'elle est aujourd'hui : on previent si elle a change
+          const now = strategies.find((s) => s.id === detail.strategyId);
+          const blocked = now && !now.type ? "La stratégie n'a plus de type : la relance n'est pas possible." : undefined;
+          const note = now && now.type && (now.type !== detail.strategyType || !sameParams(now.params, detail.params))
+            ? "La stratégie a été modifiée depuis : la relance utilisera ses paramètres actuels." : undefined;
+          return (
+            <DataCheckNotice recordId={detail.id} symbol={detail.symbol} load={() => backtestsApi.dataCheck(detail.id)}
+              onRerun={() => onRerunBacktest(detail)} rerunBlockedReason={blocked} rerunNote={note} />
+          );
+        })()}
         {detail && (
           <BacktestResult detail={detail} actions={
             <Button variant="outline" size="sm" className={`text-red-500 hover:text-red-600 ${OUTLINE_DARK}`}

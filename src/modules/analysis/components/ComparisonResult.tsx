@@ -9,7 +9,7 @@ import {
   bestMetricIndexes, COMPARISON_METRICS, comparisonCsv, comparisonCsvName, RANKING_OPTIONS, rankStrategies,
   type RankingMetric,
 } from "../comparison";
-import { DASH, dateTime, money, num, pctPlain, pctSigned, shortHash } from "../format";
+import { DASH, dateTime, money, num, pctPlain, pctSigned, periodsPerYearText, shortHash } from "../format";
 import { paramsSummary, typeShort } from "../strategyRules";
 import ComparisonCharts, { SeriesSwatch } from "./ComparisonCharts";
 import { FIELD_DARK, OUTLINE_DARK } from "./Feedback";
@@ -160,6 +160,7 @@ export default function ComparisonResult({ result, criterion, onCriterionChange,
               Capital {money(s.initialCapital)} · frais {pctPlain(s.feeRate, 2)} · glissement {pctPlain(s.slippage, 2)}
               {" · "}stop-loss {s.stopLoss == null ? "aucun" : pctPlain(s.stopLoss)} · take-profit {s.takeProfit == null ? "aucun" : pctPlain(s.takeProfit)}
               {" · "}part engagée {pctPlain(s.positionFraction, 0)}
+              {" · "}taux sans risque {pctPlain(s.riskFreeRate ?? 0, 2)} · annualisation sur {periodsPerYearText(result.periodsPerYear)}
             </p>
             <p className="text-[11px] text-muted-foreground mt-1">
               Données {sourceLabel(result.dataSource)} · empreinte <span style={MONO}>{shortHash(result.dataHash)}</span> ·{" "}

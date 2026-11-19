@@ -67,6 +67,16 @@ export function monthsAgo(months: number): string {
 export const dateTime = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : DASH;
 
+/**
+ * Nombre de seances par an utilise pour annualiser volatilite, Sharpe et Sortino. Absent des resultats enregistres
+ * avant le 2026-11-19, calcules avec 252 seances quel que soit l'actif.
+ */
+export const periodsPerYearText = (n: number | null | undefined) =>
+  n ? `${n} séances par an` : "252 séances par an (valeur fixe des anciens calculs)";
+
+/** « de AAPL » -> « d'AAPL », « de TSLA » reste tel quel (elision devant une voyelle ou un h). */
+export const deSymbol = (symbol: string) => (/^[aeiouyh]/i.test(symbol) ? `d'${symbol}` : `de ${symbol}`);
+
 /** Empreinte SHA-256 abregee : "06d2a032cf…bd9c9ce". */
 export const shortHash = (h: string) => (h.length > 18 ? `${h.slice(0, 10)}…${h.slice(-6)}` : h);
 

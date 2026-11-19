@@ -3,7 +3,7 @@ import type { BacktestDetail, BacktestMetrics, ExitReason } from "../../../api/e
 import { CardShell, DISPLAY, MONO } from "../../../shared/ui";
 import { useChartColors } from "../chartTheme";
 import {
-  DASH, dateTime, gainClass, money, moneySigned, num, pctPlain, pctSigned, price, ptsSigned, shortHash,
+  DASH, dateTime, gainClass, money, moneySigned, num, pctPlain, pctSigned, periodsPerYearText, price, ptsSigned, shortHash,
 } from "../format";
 import { paramsSummary, typeLabel, typeShort } from "../strategyRules";
 import { DrawdownChart, EquityChart, type CurveRow } from "./BacktestCharts";
@@ -116,7 +116,8 @@ export default function BacktestResult({ detail, actions }: { detail: BacktestDe
 
         <Group title="Risque" columns={5}>
           <Tile label="Volatilité annualisée" value={pctPlain(m.volatility)} />
-          <Tile label="Ratio de Sharpe" value={num(m.sharpe)} sub="Rendement / risque total" />
+          <Tile label="Ratio de Sharpe" value={num(m.sharpe)}
+            sub={(s.riskFreeRate ?? 0) > 0 ? `Au-dessus de ${pctPlain(s.riskFreeRate, 2)} / risque total` : "Rendement / risque total"} />
           <Tile label="Ratio de Sortino" value={num(m.sortino)} sub={m.sortino == null ? "Aucune séance en baisse" : "Rendement / risque de baisse"} />
           <Tile label="Ratio de Calmar" value={num(m.calmar)} sub={m.calmar == null ? "Non calculable" : "Annualisé / drawdown max"} />
           <Tile label="Drawdown maximum" value={pctSigned(m.maxDrawdown)} tone={gainClass(m.maxDrawdown)} sub={drawdownSub} />
@@ -195,6 +196,8 @@ export default function BacktestResult({ detail, actions }: { detail: BacktestDe
             ["Stop-loss", s.stopLoss == null ? "Aucun" : pctPlain(s.stopLoss)],
             ["Take-profit", s.takeProfit == null ? "Aucun" : pctPlain(s.takeProfit)],
             ["Part du capital engagée", pctPlain(s.positionFraction, 0)],
+            ["Taux sans risque", `${pctPlain(s.riskFreeRate ?? 0, 2)} par an`],
+            ["Annualisation", periodsPerYearText(detail.periodsPerYear)],
             ["Date de coupure", detail.splitDate ?? "Aucune"],
             ["Données", `${sourceLabel(detail.dataSource)} · empreinte ${shortHash(detail.dataHash)}`],
           ].map(([label, value]) => (

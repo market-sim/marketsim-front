@@ -1,7 +1,7 @@
 // Module 3 : formulaire de lancement d'un backtest.
 // L'utilisateur saisit des pourcentages ; l'API attend des fractions (0,1 % -> 0.001).
 // Memes bornes que le back (BacktestService) : le back reste l'arbitre.
-import type { BacktestRequest } from "../../api/endpoints";
+import type { BacktestRequest, BacktestSettings } from "../../api/endpoints";
 
 export interface BacktestFormValues {
   strategyId: string;
@@ -20,11 +20,16 @@ export interface BacktestFormValues {
   splitDate: string;
   slippagePct: string;
   positionPct: string;
+  /** taux sans risque annuel (%), utilise par Sharpe et Sortino */
+  riskFreePct: string;
 }
 export type BacktestField = keyof BacktestFormValues;
 export type BacktestErrors = Partial<Record<BacktestField, string>>;
 
-/** Memes valeurs par defaut que le back : 10 000 $, frais de 0,1 % par ordre, tout le capital engage. */
+/**
+ * Valeurs d'origine du back (BacktestSettings.BUILT_IN) : 10 000 $, frais de 0,1 % par ordre, tout le capital
+ * engage. Les formulaires les remplacent par les parametres par defaut de l'administrateur des qu'ils sont lus.
+ */
 export const DEFAULT_BACKTEST_FORM: BacktestFormValues = {
   strategyId: "",
   symbol: "",
@@ -37,11 +42,50 @@ export const DEFAULT_BACKTEST_FORM: BacktestFormValues = {
   splitDate: "",
   slippagePct: "0",
   positionPct: "100",
+  riskFreePct: "0",
 };
+
+/** Taux sans risque maximal accepte (meme borne que le back : BacktestSettings.MAX_RISK_FREE_RATE). */
+export const MAX_RISK_FREE_PCT = 20;
 
 const parse = (raw: string) => Number(raw.trim().replace(",", "."));
 /** 0.1 (%) -> 0.001, sans erreur d'arrondi visible (0.1 / 100 = 0.001). */
 const fraction = (pct: number) => Number((pct / 100).toFixed(8));
+/** 0.001 -> "0.1" (pourcentage saisi), sans erreur d'arrondi visible. */
+const percentText = (rate: number) => String(Number((rate * 100).toFixed(6)));
+
+/** Les champs de reglages (communs aux formulaires Backtest et Comparaison). */
+export const SETTINGS_KEYS = ["capital", "feePct", "slippagePct", "positionPct", "stopLossPct", "takeProfitPct", "riskFreePct"] as const;
+export type SettingsFields = Pick<BacktestFormValues, (typeof SETTINGS_KEYS)[number]>;
+
+/**
+ * Applique de nouveaux parametres par defaut a un formulaire, champ par champ : un champ que l'utilisateur
+ * n'a pas modifie (il vaut encore l'ancien defaut) prend le nouveau ; un champ saisi par l'utilisateur reste.
+ */
+export function applyDefaults<T extends SettingsFields>(values: T, previous: SettingsFields, next: SettingsFields): T {
+  const out = { ...values };
+  for (const key of SETTINGS_KEYS) {
+    if (values[key] === previous[key]) out[key] = next[key];
+  }
+  return out;
+}
+
+/**
+ * Champs de reglages remplis avec des reglages enregistres ou avec les parametres par defaut (pour relancer un
+ * backtest ou une comparaison avec les memes valeurs, ou preremplir les formulaires). La periode et la coupure
+ * sont fournies a part.
+ */
+export function settingsFields(s: BacktestSettings): SettingsFields {
+  return {
+    capital: String(s.initialCapital),
+    feePct: percentText(s.feeRate),
+    slippagePct: percentText(s.slippage),
+    positionPct: percentText(s.positionFraction),
+    stopLossPct: s.stopLoss == null ? "" : percentText(s.stopLoss),
+    takeProfitPct: s.takeProfit == null ? "" : percentText(s.takeProfit),
+    riskFreePct: percentText(s.riskFreeRate ?? 0),
+  };
+}
 
 /** Verifie la saisie ; `request` est null s'il y a une erreur. */
 export function buildBacktestRequest(v: BacktestFormValues): { request: BacktestRequest | null; errors: BacktestErrors } {
@@ -70,6 +114,7 @@ export function buildBacktestRequest(v: BacktestFormValues): { request: Backtest
   const position = required("positionPct", (x) => x > 0 && x <= 100, "Supérieur à 0 et au plus 100 %");
   const stopLoss = optional("stopLossPct", (x) => x > 0 && x < 100, "Entre 0 et 100 % (exclus), ou vide");
   const takeProfit = optional("takeProfitPct", (x) => x > 0 && x <= 1000, "Supérieur à 0 et au plus 1000 %, ou vide");
+  const riskFree = required("riskFreePct", (x) => x >= 0 && x <= MAX_RISK_FREE_PCT, `Entre 0 et ${MAX_RISK_FREE_PCT} %`);
 
   // les dates AAAA-MM-JJ se comparent comme du texte
   if (v.from && v.to && v.from >= v.to) errors.to = "La date de fin doit suivre la date de début";
@@ -89,10 +134,12 @@ export function buildBacktestRequest(v: BacktestFormValues): { request: Backtest
       initialCapital: capital,
       feeRate: fraction(fee),
       slippage: fraction(slippage),
-      stopLoss: stopLoss == null ? undefined : fraction(stopLoss),
-      takeProfit: takeProfit == null ? undefined : fraction(takeProfit),
+      // champ vide = 0, qui veut dire « aucun » pour le back (sans valeur, il prendrait le defaut de l'administrateur)
+      stopLoss: stopLoss == null ? 0 : fraction(stopLoss),
+      takeProfit: takeProfit == null ? 0 : fraction(takeProfit),
       positionFraction: fraction(position),
       splitDate: v.splitDate || undefined,
+      riskFreeRate: fraction(riskFree),
     },
   };
 }

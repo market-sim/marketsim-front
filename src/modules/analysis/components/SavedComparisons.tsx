@@ -15,6 +15,7 @@ import { typeShort } from "../strategyRules";
 import { SeriesSwatch } from "./ComparisonCharts";
 import ComparisonResult, { StrategyStatusBadge } from "./ComparisonResult";
 import ConfirmDialog from "./ConfirmDialog";
+import DataCheckNotice from "./DataCheckNotice";
 import { EmptyState, ErrorBanner, OUTLINE_DARK } from "./Feedback";
 import NameDialog from "./NameDialog";
 
@@ -25,6 +26,8 @@ interface Props {
   /** une comparaison a ete renommee ou supprimee : le compteur de la section est a recharger */
   onChanged: () => void;
   onGoToComparison: () => void;
+  /** « Relancer avec les memes reglages » (onglet Comparaison prerempli) */
+  onRerun: (detail: SavedComparisonDetail) => void;
 }
 
 /** Libelle court du critere, pour la colonne « Meilleure ». */
@@ -39,7 +42,7 @@ const scoreText = (criterion: RankingMetric, score: number | null) => (criterion
  * Section « Comparaisons » de l'onglet Historique (GET /api/analysis/comparisons) : liste, detail dans le meme
  * affichage que l'onglet Comparaison, renommage et suppression.
  */
-export default function SavedComparisons({ openId, onOpen, onChanged, onGoToComparison }: Props) {
+export default function SavedComparisons({ openId, onOpen, onChanged, onGoToComparison, onRerun }: Props) {
   const palette = useSeriesColors();
   const [list, setList] = useState<SavedComparisonSummary[] | null>(null);
   const [listLoading, setListLoading] = useState(false);
@@ -131,6 +134,23 @@ export default function SavedComparisons({ openId, onOpen, onChanged, onGoToComp
             <Skeleton className="h-72 w-full" />
           </CardShell>
         )}
+        {detail && (() => {
+          // la relance reprend les strategies telles qu'elles sont aujourd'hui
+          const names = (status: string) => detail.result.strategies
+            .filter((_, i) => detail.strategyStatus[i] === status).map((s) => `« ${s.strategyName} »`);
+          const deleted = names("DELETED");
+          const modified = names("MODIFIED");
+          return (
+            <DataCheckNotice recordId={detail.id} symbol={detail.result.symbol} load={() => comparisonsApi.dataCheck(detail.id)}
+              onRerun={() => onRerun(detail)}
+              rerunBlockedReason={deleted.length > 0
+                ? `${deleted.join(", ")} ${deleted.length > 1 ? "ont été supprimées" : "a été supprimée"} : la relance avec les mêmes stratégies n'est plus possible.`
+                : undefined}
+              rerunNote={modified.length > 0
+                ? `${modified.join(", ")} ${modified.length > 1 ? "ont été modifiées" : "a été modifiée"} depuis : la relance utilisera les paramètres actuels.`
+                : undefined} />
+          );
+        })()}
         {detail && (
           <ComparisonResult result={detail.result} criterion={criterion} onCriterionChange={setCriterion}
             saved={{ name: detail.name, createdAt: detail.createdAt }} statuses={detail.strategyStatus}

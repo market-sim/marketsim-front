@@ -1,11 +1,18 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
-import { FlaskConical, GitCompare, History, Landmark, LineChart, ListChecks } from "lucide-react";
-import { assetsApi, strategiesApi, type Asset, type BacktestDetail, type Strategy } from "../../api/endpoints";
+import { FlaskConical, GitCompare, History, Landmark, LineChart, ListChecks, ShieldCheck } from "lucide-react";
+import {
+  assetsApi, defaultsApi, strategiesApi, type Asset, type BacktestDetail, type BacktestSettings,
+  type SavedComparisonDetail, type Strategy,
+} from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
+import { useAuth } from "../../auth/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../app/components/ui/tabs";
 import { useCoachFocus } from "../coach/coachFocus";
-import { DEFAULT_BACKTEST_FORM, type BacktestFormValues } from "./backtestForm";
+import {
+  applyDefaults, DEFAULT_BACKTEST_FORM, SETTINGS_KEYS, settingsFields, type BacktestFormValues, type SettingsFields,
+} from "./backtestForm";
+import AdminTab, { type AdminSection } from "./components/admin/AdminTab";
 import BacktestTab from "./components/BacktestTab";
 import ComparisonTab from "./components/ComparisonTab";
 import FundamentalsTab from "./components/FundamentalsTab";
@@ -15,16 +22,20 @@ import TechnicalTab from "./components/TechnicalTab";
 import { DEFAULT_TECH, type TechSettings } from "./technical";
 import { DEFAULT_COMPARISON_FORM, type ComparisonFormValues, type ComparisonRun } from "./comparison";
 
-type TabId = "technique" | "fondamentale" | "strategies" | "backtest" | "historique" | "comparaison";
+type TabId = "technique" | "fondamentale" | "strategies" | "backtest" | "historique" | "comparaison" | "admin";
 
-const TABS: { id: TabId; label: string; Icon: typeof LineChart }[] = [
+/** adminOnly : onglet absent pour un utilisateur ordinaire (et ?tab=admin le ramene a l'analyse technique). */
+const TABS: { id: TabId; label: string; Icon: typeof LineChart; adminOnly?: boolean }[] = [
   { id: "technique", label: "Analyse technique", Icon: LineChart },
   { id: "fondamentale", label: "Analyse fondamentale", Icon: Landmark },
   { id: "strategies", label: "Stratégies", Icon: ListChecks },
   { id: "backtest", label: "Backtest", Icon: FlaskConical },
   { id: "historique", label: "Historique", Icon: History },
   { id: "comparaison", label: "Comparaison", Icon: GitCompare },
+  { id: "admin", label: "Administration", Icon: ShieldCheck, adminOnly: true },
 ];
+
+const ADMIN_SECTIONS: AdminSection[] = ["defaults", "results", "stats", "cache"];
 
 /** Meme apparence que les onglets du module Agent : pastille bleue sur l'onglet actif. */
 const TAB_CLASS =
@@ -35,12 +46,20 @@ const TAB_CLASS =
 /**
  * Module 3 : Analyse financiere & Backtesting.
  * Une seule route (/analysis) : l'onglet affiche est dans l'URL (?tab=...), ainsi que, dans l'historique, la section
- * (&section=comparaisons), le backtest ouvert (&id=...) ou la comparaison ouverte (&comparison=...).
+ * (&section=comparaisons), le backtest ouvert (&id=...) ou la comparaison ouverte (&comparison=...), et dans
+ * l'administration (ADMIN seulement) la section (&section=defaults|results|stats|cache), la liste (&view=) et
+ * l'element ouvert (&id=).
  * La page garde ce qui doit survivre a un changement d'onglet : reglages, saisie et dernier resultat.
  */
 export default function AnalysisPage() {
   const [search, setSearch] = useSearchParams();
-  const tab: TabId = TABS.find((t) => t.id === search.get("tab"))?.id ?? "technique";
+  const { user } = useAuth();
+  // meme facon que le reste du front de connaitre le role (ProtectedRoute, FundamentalsTab) ; le back reste
+  // l'arbitre : ses routes d'administration repondent 403 a un utilisateur ordinaire
+  const isAdmin = user?.role === "ADMIN";
+  const visibleTabs = TABS.filter((t) => !t.adminOnly || isAdmin);
+  const tab: TabId = visibleTabs.find((t) => t.id === search.get("tab"))?.id ?? "technique";
+  const adminSection: AdminSection = ADMIN_SECTIONS.find((s) => s === search.get("section")) ?? "defaults";
   /** identifiant strictement positif lu dans l'URL, sinon null */
   const idFrom = (name: string) => {
     const value = Number(search.get(name));
@@ -85,6 +104,25 @@ export default function AnalysisPage() {
     }
   }, []);
 
+  // Parametres par defaut de l'administrateur : ils preremplissent les formulaires Backtest et Comparaison.
+  // On garde ceux deja appliques pour ne remplacer, a chaque changement, que les champs non modifies.
+  const appliedDefaults = useRef<SettingsFields>(
+    Object.fromEntries(SETTINGS_KEYS.map((k) => [k, DEFAULT_BACKTEST_FORM[k]])) as SettingsFields);
+  const [defaultsLoaded, setDefaultsLoaded] = useState(false);
+  const applyAdminDefaults = useCallback((d: BacktestSettings) => {
+    const next = settingsFields(d);
+    const previous = appliedDefaults.current;
+    setForm((f) => applyDefaults(f, previous, next));
+    setComparisonForm((f) => applyDefaults(f, previous, next));
+    appliedDefaults.current = next;
+    setDefaultsLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    // sans reponse, les formulaires gardent les valeurs d'origine (les memes que le back sans modification)
+    defaultsApi.get().then(applyAdminDefaults).catch(() => undefined);
+  }, [applyAdminDefaults]);
+
   useEffect(() => {
     loadStrategies();
     assetsApi.list()
@@ -108,10 +146,32 @@ export default function AnalysisPage() {
     go("backtest");
   };
 
+  // « Relancer avec les memes reglages » (historique) : formulaire rempli avec la periode exacte et les reglages
+  // enregistres, puis lancement automatique dans l'onglet correspondant
+  const [backtestAutoRun, setBacktestAutoRun] = useState(false);
+  const [comparisonAutoRun, setComparisonAutoRun] = useState(false);
+  const rerunBacktest = (d: BacktestDetail) => {
+    setForm({
+      ...DEFAULT_BACKTEST_FORM, strategyId: String(d.strategyId), symbol: d.symbol, from: d.from, to: d.to,
+      splitDate: d.splitDate ?? "", ...settingsFields(d.settings),
+    });
+    setBacktestAutoRun(true);
+    go("backtest");
+  };
+  const rerunComparison = (d: SavedComparisonDetail) => {
+    const r = d.result;
+    setComparisonForm({
+      ...DEFAULT_COMPARISON_FORM, strategyIds: r.strategies.map((s) => String(s.strategyId)), symbol: r.symbol,
+      from: r.from, to: r.to, splitDate: r.splitDate ?? "", ...settingsFields(r.settings),
+    });
+    setComparisonAutoRun(true);
+    go("comparaison");
+  };
+
   return (
     <Tabs value={tab} onValueChange={(v) => go(v as TabId)} className="gap-5">
       <TabsList className="h-auto w-full max-w-full flex-wrap justify-start gap-1 rounded-xl border border-border/60 bg-white p-1 dark:bg-card sm:w-fit">
-        {TABS.map(({ id, label, Icon }) => (
+        {visibleTabs.map(({ id, label, Icon }) => (
           <TabsTrigger key={id} value={id} className={TAB_CLASS}><Icon className="w-3.5 h-3.5" />{label}</TabsTrigger>
         ))}
       </TabsList>
@@ -135,13 +195,14 @@ export default function AnalysisPage() {
         <BacktestTab strategies={strategies} strategiesLoading={strategiesLoading} assets={assets}
           values={form} onValuesChange={setForm} result={result}
           onResult={(detail) => { setResult(detail); loadStrategies(); }} onStrategyGone={loadStrategies}
-          onGoToStrategies={() => go("strategies")} onOpenHistory={() => go("historique")} />
+          onGoToStrategies={() => go("strategies")} onOpenHistory={() => go("historique")}
+          autoRun={backtestAutoRun} onAutoRunStarted={() => setBacktestAutoRun(false)} adminDefaults={defaultsLoaded} />
       </TabsContent>
 
       <TabsContent value="historique">
         <HistoryTab strategies={strategies} openId={openId} onOpen={(id) => go("historique", id != null ? { id: String(id) } : {})}
           onDeleted={(id) => { if (result?.id === id) setResult(null); loadStrategies(); }}
-          onGoToBacktest={() => go("backtest")}
+          onGoToBacktest={() => go("backtest")} onRerunBacktest={rerunBacktest} onRerunComparison={rerunComparison}
           section={historySection} onSection={(s) => go("historique", s === "comparaisons" ? { section: s } : {})}
           openComparisonId={openComparisonId} onOpenComparison={openSavedComparison}
           onGoToComparison={() => go("comparaison")} />
@@ -152,8 +213,20 @@ export default function AnalysisPage() {
           assets={assets} assetsLoading={assetsLoading} assetsError={assetsError}
           values={comparisonForm} onValuesChange={setComparisonForm} run={comparison}
           onRunChange={setComparison} onGoToStrategies={() => go("strategies")} onReloadStrategies={loadStrategies}
-          onOpenSaved={openSavedComparison} />
+          onOpenSaved={openSavedComparison}
+          autoRun={comparisonAutoRun} onAutoRunStarted={() => setComparisonAutoRun(false)} adminDefaults={defaultsLoaded} />
       </TabsContent>
+
+      {/* monte seulement pour un ADMIN : un utilisateur ordinaire n'en recoit ni l'onglet ni le contenu */}
+      {isAdmin && (
+        <TabsContent value="admin">
+          <AdminTab assets={assets} section={adminSection}
+            onSection={(s) => go("admin", s === "defaults" ? {} : { section: s })}
+            view={search.get("view") === "comparisons" ? "comparisons" : "backtests"} openId={tab === "admin" ? idFrom("id") : null}
+            onNavigate={(params) => go("admin", { section: adminSection, ...params })}
+            onDefaultsChanged={applyAdminDefaults} />
+        </TabsContent>
+      )}
     </Tabs>
   );
 }

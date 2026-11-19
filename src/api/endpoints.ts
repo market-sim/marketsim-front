@@ -202,6 +202,8 @@ export interface BacktestRequest {
   positionFraction?: number;
   /** date de coupure entrainement / test */
   splitDate?: string;
+  /** taux sans risque annuel pour Sharpe et Sortino (0.02 = 2 %) ; 0 par defaut */
+  riskFreeRate?: number;
 }
 
 export interface BacktestSettings {
@@ -211,6 +213,23 @@ export interface BacktestSettings {
   stopLoss: number | null;
   takeProfit: number | null;
   positionFraction: number;
+  /** 0 pour les enregistrements anterieurs a ce reglage (c'etait la valeur utilisee) */
+  riskFreeRate?: number;
+}
+
+/**
+ * Verification des cours d'un enregistrement : SAME (inchanges sur la periode), CHANGED (ajustes depuis),
+ * NOT_COVERED (l'historique actuel ne couvre plus la periode), UNVERIFIABLE (ancien enregistrement sans
+ * empreinte de periode), UNAVAILABLE (cours actuels impossibles a charger).
+ */
+export type DataCheckStatus = "SAME" | "CHANGED" | "NOT_COVERED" | "UNVERIFIABLE" | "UNAVAILABLE";
+export interface DataCheck {
+  status: DataCheckStatus;
+  from: string;
+  to: string;
+  /** premiere et derniere seance de l'historique actuel (null si non charge) */
+  currentFirst: string | null;
+  currentLast: string | null;
 }
 
 /** null = metrique non calculable (aucun trade, aucune perte, aucun drawdown...). */
@@ -304,6 +323,8 @@ export interface BacktestDetail {
   test?: BacktestSegment;
   curves: BacktestCurves;
   trades: BacktestTrade[];
+  /** seances par an utilisees pour annualiser ; absent des anciens backtests (calcules avec 252) */
+  periodsPerYear?: number;
 }
 
 export interface BacktestComparisonRequest extends Omit<BacktestRequest, "strategyId"> {
@@ -338,6 +359,10 @@ export interface BacktestComparison {
   dates: string[];
   buyHold: number[];
   strategies: StrategyComparison[];
+  /** seances par an utilisees pour annualiser ; absent des anciennes comparaisons (calculees avec 252) */
+  periodsPerYear?: number | null;
+  /** empreinte des seances de la periode seulement ; absente des anciennes comparaisons */
+  periodHash?: string | null;
 }
 
 // --- Analyse fondamentale (rapports annuels 10-K de la SEC, actions seulement) ---
@@ -442,6 +467,8 @@ export const backtestsApi = {
   list: (strategyId?: number) =>
     api.get<BacktestSummary[]>("/analysis/backtests", { params: { strategyId } }).then((r) => r.data),
   get: (id: number) => api.get<BacktestDetail>(`/analysis/backtests/${id}`).then((r) => r.data),
+  /** les cours de la periode ont-ils change depuis l'enregistrement ? (appel a part : il peut telecharger) */
+  dataCheck: (id: number) => api.get<DataCheck>(`/analysis/backtests/${id}/data-check`).then((r) => r.data),
   remove: (id: number) => api.delete(`/analysis/backtests/${id}`),
 };
 
@@ -504,9 +531,132 @@ export const comparisonsApi = {
   save: (req: SaveComparisonRequest) => api.post<SavedComparisonDetail>("/analysis/comparisons", req).then((r) => r.data),
   list: () => api.get<SavedComparisonSummary[]>("/analysis/comparisons").then((r) => r.data),
   get: (id: number) => api.get<SavedComparisonDetail>(`/analysis/comparisons/${id}`).then((r) => r.data),
+  dataCheck: (id: number) => api.get<DataCheck>(`/analysis/comparisons/${id}/data-check`).then((r) => r.data),
   rename: (id: number, name: string) =>
     api.patch<SavedComparisonSummary>(`/analysis/comparisons/${id}`, { name }).then((r) => r.data),
   remove: (id: number) => api.delete(`/analysis/comparisons/${id}`),
+};
+
+// --- Parametres par defaut des simulations (lus par tous, modifies par l'administrateur) ---
+export const defaultsApi = {
+  /** valeurs utilisees quand un backtest ou une comparaison n'en donne pas ; preremplissent les formulaires */
+  get: () => api.get<BacktestSettings>("/analysis/defaults").then((r) => r.data),
+};
+
+// --- Administration du module 3 (routes reservees a l'ADMIN : 403 sinon) ---
+export interface SimulationDefaultsView {
+  current: BacktestSettings;
+  /** valeurs d'origine (avant toute modification) */
+  original: BacktestSettings;
+  /** null tant que l'administrateur n'a rien modifie */
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+/** stopLoss et takeProfit : null ou 0 = aucun */
+export interface SimulationDefaultsRequest {
+  initialCapital: number;
+  feeRate: number;
+  slippage: number;
+  stopLoss: number | null;
+  takeProfit: number | null;
+  positionFraction: number;
+  riskFreeRate: number;
+}
+/** Trace d'une modification : valeurs en texte (taux en fractions, « aucun » pour un stop-loss desactive). */
+export interface SimulationDefaultsChange {
+  id: number;
+  changedAt: string;
+  changedBy: string;
+  field: keyof SimulationDefaultsRequest;
+  oldValue: string | null;
+  newValue: string | null;
+}
+export interface AdminOwner { id: number; name: string; email: string }
+export interface AdminBacktestItem {
+  id: number;
+  owner: AdminOwner;
+  strategyId: number;
+  strategyName: string;
+  strategyType: StrategyType;
+  symbol: string;
+  from: string;
+  to: string;
+  createdAt: string;
+  totalReturn: number | null;
+  annualizedReturn: number | null;
+  sharpe: number | null;
+  maxDrawdown: number | null;
+  tradeCount: number | null;
+  buyHoldReturn: number | null;
+}
+export interface AdminComparisonItem {
+  id: number;
+  owner: AdminOwner;
+  name: string;
+  symbol: string;
+  from: string;
+  to: string;
+  createdAt: string;
+  rankBy: ComparisonRanking;
+  buyHoldReturn: number | null;
+  strategies: ComparedStrategySnapshot[];
+}
+export interface ResultPage<T> { items: T[]; total: number; page: number; size: number }
+export interface AdminUserActivity {
+  owner: AdminOwner;
+  backtests: number;
+  comparisons: number;
+  /** moyenne des Sharpe de ses backtests (null s'il n'en a aucun) */
+  averageSharpe: number | null;
+  lastActivity: string | null;
+}
+export interface AdminStats {
+  totals: { backtests: number; comparisons: number; users: number };
+  weeks: number;
+  /** une ligne par semaine (du lundi au dimanche), de la plus ancienne a la semaine en cours */
+  weekly: { start: string; backtests: number; comparisons: number }[];
+  assets: { symbol: string; backtests: number; comparisons: number; total: number }[];
+  /** tous les types, du plus au moins utilise ; Sharpe moyen sur les backtests seulement */
+  types: { type: StrategyType; backtests: number; inComparisons: number; total: number; averageSharpe: number | null }[];
+  users: AdminUserActivity[];
+  /** meilleur backtest (d'au moins un an) de chaque strategie, par Sharpe */
+  best: {
+    backtestId: number; strategyId: number; strategyName: string; strategyType: StrategyType; owner: AdminOwner;
+    symbol: string; from: string; to: string; sharpe: number; annualizedReturn: number | null; maxDrawdown: number | null;
+  }[];
+}
+export interface FundamentalsCacheEntry {
+  symbol: string;
+  cik: string | null;
+  companyName: string | null;
+  source: string;
+  downloadedAt: string;
+  ageDays: number;
+  /** plus de 30 jours : retelecharge a la prochaine lecture */
+  stale: boolean;
+  sizeKb: number;
+}
+export interface AdminResultFilters { userId?: number; symbol?: string; type?: StrategyType; page?: number; size?: number }
+
+export const analysisAdminApi = {
+  defaults: () => api.get<SimulationDefaultsView>("/analysis/admin/defaults").then((r) => r.data),
+  updateDefaults: (req: SimulationDefaultsRequest) =>
+    api.put<SimulationDefaultsView>("/analysis/admin/defaults", req).then((r) => r.data),
+  defaultsHistory: () => api.get<SimulationDefaultsChange[]>("/analysis/admin/defaults/history").then((r) => r.data),
+  users: () => api.get<AdminUserActivity[]>("/analysis/admin/users").then((r) => r.data),
+  backtests: (f: AdminResultFilters) =>
+    api.get<ResultPage<AdminBacktestItem>>("/analysis/admin/backtests", { params: f }).then((r) => r.data),
+  backtest: (id: number) =>
+    api.get<{ owner: AdminOwner; backtest: BacktestDetail }>(`/analysis/admin/backtests/${id}`).then((r) => r.data),
+  deleteBacktest: (id: number) => api.delete(`/analysis/admin/backtests/${id}`),
+  comparisons: (f: AdminResultFilters) =>
+    api.get<ResultPage<AdminComparisonItem>>("/analysis/admin/comparisons", { params: f }).then((r) => r.data),
+  comparison: (id: number) =>
+    api.get<{ owner: AdminOwner; comparison: SavedComparisonDetail }>(`/analysis/admin/comparisons/${id}`).then((r) => r.data),
+  deleteComparison: (id: number) => api.delete(`/analysis/admin/comparisons/${id}`),
+  stats: (weeks: number) => api.get<AdminStats>("/analysis/admin/stats", { params: { weeks } }).then((r) => r.data),
+  fundamentalsCache: () => api.get<FundamentalsCacheEntry[]>("/analysis/admin/fundamentals").then((r) => r.data),
+  deleteFundamentals: (symbol: string) => api.delete(`/analysis/admin/fundamentals/${encodeURIComponent(symbol)}`),
 };
 
 // ─── Module 4 : Formation & Pedagogie ────────────────────────────────────────

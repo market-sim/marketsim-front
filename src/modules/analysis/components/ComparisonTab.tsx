@@ -39,6 +39,12 @@ interface Props {
   onReloadStrategies: () => void;
   /** ouvre une comparaison enregistree dans l'onglet Historique */
   onOpenSaved: (id: number) => void;
+  /** vrai quand une comparaison doit etre lancee sans clic (« Relancer avec les memes reglages ») */
+  autoRun?: boolean;
+  /** appele au lancement automatique : la page remet `autoRun` a faux */
+  onAutoRunStarted?: () => void;
+  /** vrai quand les reglages ont ete preremplis avec les parametres par defaut de l'administrateur */
+  adminDefaults?: boolean;
 }
 
 /**
@@ -48,16 +54,22 @@ interface Props {
  */
 export default function ComparisonTab({
   strategies, strategiesLoading, strategiesError, assets, assetsLoading, assetsError,
-  values, onValuesChange, run, onRunChange, onGoToStrategies, onReloadStrategies, onOpenSaved,
+  values, onValuesChange, run, onRunChange, onGoToStrategies, onReloadStrategies, onOpenSaved, autoRun = false,
+  onAutoRunStarted, adminDefaults = false,
 }: Props) {
   const [submitted, setSubmitted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const result = run?.result ?? null;
-  const [advanced, setAdvanced] = useState(
-    values.slippagePct !== DEFAULT_COMPARISON_FORM.slippagePct || values.positionPct !== DEFAULT_COMPARISON_FORM.positionPct,
-  );
+  const usesAdvanced = values.slippagePct !== DEFAULT_COMPARISON_FORM.slippagePct
+    || values.positionPct !== DEFAULT_COMPARISON_FORM.positionPct || values.riskFreePct !== DEFAULT_COMPARISON_FORM.riskFreePct;
+  const [advanced, setAdvanced] = useState(usesAdvanced);
+  // les parametres par defaut arrivent apres l'ouverture : on montre les options avancees s'ils en utilisent
+  useEffect(() => {
+    if (adminDefaults && usesAdvanced) setAdvanced(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminDefaults]);
   const resultRef = useRef<HTMLDivElement>(null);
   /** vrai juste apres un lancement reussi : le nouveau resultat doit etre amene a l'ecran */
   const scrollToResult = useRef(false);
@@ -86,8 +98,28 @@ export default function ComparisonTab({
     strategyIds: checked ? [...selectedIds, id] : selectedIds.filter((x) => x !== id),
   });
 
-  const launch = async (e: FormEvent) => {
+  const submit = (e: FormEvent) => {
     e.preventDefault();
+    void launch();
+  };
+
+  // « Relancer avec les memes reglages » : la page a rempli le formulaire, on lance comme un clic sur le bouton.
+  // L'onglet est monte a ce moment-la ; la reference evite un second lancement (double effet du mode strict).
+  const autoRunDone = useRef(false);
+  useEffect(() => {
+    if (!autoRun) {
+      autoRunDone.current = false;
+      return;
+    }
+    if (autoRunDone.current) return;
+    autoRunDone.current = true;
+    onAutoRunStarted?.();
+    if (usesAdvanced) setAdvanced(true);
+    void launch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRun]);
+
+  const launch = async () => {
     setSubmitted(true);
     const { request } = buildComparisonRequest(checkedValues);
     if (!request) return;
@@ -160,7 +192,7 @@ export default function ComparisonTab({
         {strategiesError && <div className="mb-4"><ErrorBanner message={strategiesError} onRetry={onReloadStrategies} /></div>}
         {assetsError && <div className="mb-4"><ErrorBanner message={assetsError} /></div>}
 
-        <form onSubmit={launch} noValidate className="space-y-4">
+        <form onSubmit={submit} noValidate className="space-y-4">
           <fieldset>
             <legend className="block text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
               Stratégies à comparer · {selectedIds.length} / {MAX_COMPARED}
@@ -213,6 +245,10 @@ export default function ComparisonTab({
             </div>
           </div>
 
+          {adminDefaults && (
+            <p className="text-[11px] text-muted-foreground">Réglages préremplis avec les valeurs par défaut définies par l'administrateur.</p>
+          )}
+
           <div>
             <button type="button" onClick={() => setAdvanced(!advanced)} aria-expanded={advanced}
               className="inline-flex items-center gap-1 text-[12px] font-medium text-blue-600">
@@ -222,6 +258,7 @@ export default function ComparisonTab({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-4 mt-3">
                 {numberField("slippagePct", "Glissement de prix (%)", { hint: "Achat un peu plus cher, vente un peu moins cher" })}
                 {numberField("positionPct", "Part du capital engagée (%)", { hint: "Part des liquidités investie à chaque achat" })}
+                {numberField("riskFreePct", "Taux sans risque (% par an)", { hint: "Sharpe et Sortino mesurent le rendement au-dessus de ce taux" })}
               </div>
             )}
           </div>

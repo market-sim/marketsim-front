@@ -26,6 +26,7 @@ export const DEFAULT_COMPARISON_FORM: ComparisonFormValues = {
   splitDate: DEFAULT_BACKTEST_FORM.splitDate,
   slippagePct: DEFAULT_BACKTEST_FORM.slippagePct,
   positionPct: DEFAULT_BACKTEST_FORM.positionPct,
+  riskFreePct: DEFAULT_BACKTEST_FORM.riskFreePct,
   strategyIds: [],
 };
 
@@ -155,7 +156,8 @@ export function comparisonNameError(name: string): string {
 }
 
 const PARAM_KEYS: (keyof StrategyParams)[] = ["fastPeriod", "slowPeriod", "signalPeriod", "period", "buyBelow", "sellAbove", "bandK"];
-const sameParams = (a: StrategyParams | null | undefined, b: StrategyParams | null | undefined) =>
+/** Memes parametres de strategie (les champs absents valent null). */
+export const sameParams = (a: StrategyParams | null | undefined, b: StrategyParams | null | undefined) =>
   PARAM_KEYS.every((k) => (a?.[k] ?? null) === (b?.[k] ?? null));
 
 /**
