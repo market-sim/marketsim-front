@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { ChevronDown, GitCompare, Play } from "lucide-react";
-import { backtestsApi, type Asset, type BacktestComparison, type Strategy } from "../../../api/endpoints";
+import { Check, ChevronDown, GitCompare, Info, Play, Save } from "lucide-react";
+import { backtestsApi, comparisonsApi, type Asset, type Strategy } from "../../../api/endpoints";
 import { errorMessage } from "../../../api/client";
 import { CardShell, DISPLAY, MONO } from "../../../shared/ui";
 import { Button } from "../../../app/components/ui/button";
@@ -9,14 +9,16 @@ import { Input } from "../../../app/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../app/components/ui/select";
 import { Skeleton } from "../../../app/components/ui/skeleton";
 import {
-  buildComparisonRequest, DEFAULT_COMPARISON_FORM, MAX_COMPARED, MIN_COMPARED,
-  type ComparisonErrors, type ComparisonFormValues,
+  buildComparisonRequest, changesSinceDisplay, COMPARISON_NAME_MAX, comparisonNameError, DEFAULT_COMPARISON_FORM,
+  defaultComparisonName, MAX_COMPARED, MIN_COMPARED, RANKING_TO_API, rankingLabel,
+  type ComparisonErrors, type ComparisonFormValues, type ComparisonRun,
 } from "../comparison";
 import { isNotFound } from "../errors";
 import { todayIso } from "../format";
 import { paramsSummary, typeShort } from "../strategyRules";
 import ComparisonResult from "./ComparisonResult";
-import { EmptyState, ErrorBanner, Field, FIELD_DARK } from "./Feedback";
+import { EmptyState, ErrorBanner, Field, FIELD_DARK, OUTLINE_DARK } from "./Feedback";
+import NameDialog from "./NameDialog";
 
 type SettingField = Exclude<keyof ComparisonFormValues, "strategyIds">;
 
@@ -30,24 +32,29 @@ interface Props {
   /** saisie gardee par la page : elle survit au changement d'onglet */
   values: ComparisonFormValues;
   onValuesChange: (values: ComparisonFormValues) => void;
-  /** derniere comparaison lancee dans cette session (non enregistree) */
-  result: BacktestComparison | null;
-  onResult: (result: BacktestComparison) => void;
+  /** derniere comparaison lancee dans cette session, avec la demande qui l'a produite */
+  run: ComparisonRun | null;
+  onRunChange: (run: ComparisonRun) => void;
   onGoToStrategies: () => void;
   onReloadStrategies: () => void;
+  /** ouvre une comparaison enregistree dans l'onglet Historique */
+  onOpenSaved: (id: number) => void;
 }
 
 /**
  * Onglet « Comparaison » : 2 a 5 strategies rejouees sur le meme actif, la meme periode et les memes reglages
- * (POST /api/analysis/backtests/compare). Le resultat est calcule a la demande et n'est pas enregistre.
+ * (POST /api/analysis/backtests/compare). Le resultat est calcule a la demande ; « Enregistrer cette comparaison »
+ * le fait recalculer par le serveur et l'ajoute a l'historique (POST /api/analysis/comparisons).
  */
 export default function ComparisonTab({
   strategies, strategiesLoading, strategiesError, assets, assetsLoading, assetsError,
-  values, onValuesChange, result, onResult, onGoToStrategies, onReloadStrategies,
+  values, onValuesChange, run, onRunChange, onGoToStrategies, onReloadStrategies, onOpenSaved,
 }: Props) {
   const [submitted, setSubmitted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const result = run?.result ?? null;
   const [advanced, setAdvanced] = useState(
     values.slippagePct !== DEFAULT_COMPARISON_FORM.slippagePct || values.positionPct !== DEFAULT_COMPARISON_FORM.positionPct,
   );
@@ -79,7 +86,7 @@ export default function ComparisonTab({
     strategyIds: checked ? [...selectedIds, id] : selectedIds.filter((x) => x !== id),
   });
 
-  const run = async (e: FormEvent) => {
+  const launch = async (e: FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
     const { request } = buildComparisonRequest(checkedValues);
@@ -89,7 +96,8 @@ export default function ComparisonTab({
     try {
       const comparison = await backtestsApi.compare(request);
       scrollToResult.current = true;
-      onResult(comparison);
+      // nouveau resultat : pas encore enregistre ; le critere de classement choisi est garde
+      onRunChange({ request, result: comparison, criterion: run?.criterion ?? "sharpe", saved: null, changes: [] });
     } catch (err) {
       setError(errorMessage(err));
       // strategie supprimee entre-temps : la liste est rechargee, elle disparait alors de la selection
@@ -152,7 +160,7 @@ export default function ComparisonTab({
         {strategiesError && <div className="mb-4"><ErrorBanner message={strategiesError} onRetry={onReloadStrategies} /></div>}
         {assetsError && <div className="mb-4"><ErrorBanner message={assetsError} /></div>}
 
-        <form onSubmit={run} noValidate className="space-y-4">
+        <form onSubmit={launch} noValidate className="space-y-4">
           <fieldset>
             <legend className="block text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-1.5">
               Stratégies à comparer · {selectedIds.length} / {MAX_COMPARED}
@@ -225,14 +233,69 @@ export default function ComparisonTab({
       </CardShell>
 
       <div ref={resultRef} className={`scroll-mt-4 transition-opacity ${busy ? "opacity-50" : ""}`}>
-        {result ? (
-          <ComparisonResult result={result} />
+        {run && result ? (
+          <div className="space-y-4">
+            {run.saved && (
+              <div role="status" className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
+                <Check className="w-4 h-4 mt-0.5 shrink-0" />
+                {/* l'icone reste a gauche ; sur un telephone, le lien passe sous le texte au lieu de l'ecraser */}
+                <div className="flex min-w-0 flex-1 flex-wrap items-start gap-x-3 gap-y-1">
+                  <span className="min-w-0 flex-[1_1_12rem] wrap-anywhere">Comparaison enregistrée dans l'historique sous le nom « {run.saved.name} ».</span>
+                  <button type="button" onClick={() => onOpenSaved(run.saved!.id)} className="min-w-0 text-left font-semibold underline underline-offset-2">
+                    Ouvrir dans l'historique
+                  </button>
+                </div>
+              </div>
+            )}
+            {run.changes.length > 0 && (
+              <div role="status" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+                <Info className="w-4 h-4 mt-0.5 shrink-0" />
+                <div className="min-w-0">
+                  <p>Le serveur a recalculé la comparaison avant de l'enregistrer, et les données ont changé depuis l'affichage :</p>
+                  <ul className="mt-1 list-disc pl-4">{run.changes.map((c) => <li key={c}>{c}</li>)}</ul>
+                  <p className="mt-1">Les résultats affichés ci-dessous sont ceux qui ont été enregistrés.</p>
+                </div>
+              </div>
+            )}
+            <ComparisonResult result={result} criterion={run.criterion} saved={run.saved}
+              onCriterionChange={(criterion) => onRunChange({ ...run, criterion })}
+              actions={run.saved ? (
+                <Button variant="outline" size="sm" className={OUTLINE_DARK} disabled><Check />Enregistrée</Button>
+              ) : (
+                <Button size="sm" onClick={() => setSaving(true)}><Save />Enregistrer cette comparaison</Button>
+              )} />
+          </div>
         ) : (
           <CardShell className="p-8 text-center text-sm text-muted-foreground">
             Le résultat s'affichera ici : courbes superposées, classement, métriques côte à côte et export CSV.
           </CardShell>
         )}
       </div>
+
+      {saving && run && (
+        <NameDialog title="Enregistrer cette comparaison" confirmLabel="Enregistrer"
+          description={<>
+            Le serveur relance la comparaison avec les mêmes stratégies, le même actif et les mêmes réglages, puis l'ajoute
+            à l'onglet Historique, classée selon le critère « {rankingLabel(run.criterion)} ».
+          </>}
+          initialName={defaultComparisonName(run.result)} nameMax={COMPARISON_NAME_MAX} validateName={comparisonNameError}
+          onSubmit={async (name) => {
+            try {
+              const saved = await comparisonsApi.save({ name, rankBy: RANKING_TO_API[run.criterion], request: run.request });
+              onRunChange({
+                ...run,
+                result: saved.result,
+                saved: { id: saved.id, name: saved.name, createdAt: saved.createdAt },
+                changes: changesSinceDisplay(run.result, saved.result),
+              });
+            } catch (err) {
+              // strategie supprimee entre-temps : la liste est rechargee (le message reste dans la fenetre)
+              if (isNotFound(err)) onReloadStrategies();
+              throw err;
+            }
+          }}
+          onClose={() => setSaving(false)} />
+      )}
     </div>
   );
 }

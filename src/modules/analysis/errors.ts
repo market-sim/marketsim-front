@@ -6,6 +6,9 @@ import axios from "axios";
  */
 export const isNotFound = (error: unknown): boolean => axios.isAxiosError(error) && error.response?.status === 404;
 
+/** Vrai si le back a repondu 409 : conflit, par exemple un nom deja utilise par une autre configuration. */
+export const isConflict = (error: unknown): boolean => axios.isAxiosError(error) && error.response?.status === 409;
+
 /**
  * Pour une suppression : un 404 veut dire « deja supprime ailleurs ». Le but est atteint, on continue comme apres
  * un succes ; toute autre erreur est relancee. S'utilise ainsi : await api.remove(id).catch(ignoreNotFound).

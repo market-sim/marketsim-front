@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { FlaskConical, GitCompare, History, Landmark, LineChart, ListChecks } from "lucide-react";
-import { assetsApi, strategiesApi, type Asset, type BacktestComparison, type BacktestDetail, type Strategy } from "../../api/endpoints";
+import { assetsApi, strategiesApi, type Asset, type BacktestDetail, type Strategy } from "../../api/endpoints";
 import { errorMessage } from "../../api/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../app/components/ui/tabs";
 import { useCoachFocus } from "../coach/coachFocus";
@@ -9,11 +9,11 @@ import { DEFAULT_BACKTEST_FORM, type BacktestFormValues } from "./backtestForm";
 import BacktestTab from "./components/BacktestTab";
 import ComparisonTab from "./components/ComparisonTab";
 import FundamentalsTab from "./components/FundamentalsTab";
-import HistoryTab from "./components/HistoryTab";
+import HistoryTab, { type HistorySection } from "./components/HistoryTab";
 import StrategiesTab from "./components/StrategiesTab";
 import TechnicalTab from "./components/TechnicalTab";
 import { DEFAULT_TECH, type TechSettings } from "./technical";
-import { DEFAULT_COMPARISON_FORM, type ComparisonFormValues } from "./comparison";
+import { DEFAULT_COMPARISON_FORM, type ComparisonFormValues, type ComparisonRun } from "./comparison";
 
 type TabId = "technique" | "fondamentale" | "strategies" | "backtest" | "historique" | "comparaison";
 
@@ -34,17 +34,27 @@ const TAB_CLASS =
 
 /**
  * Module 3 : Analyse financiere & Backtesting.
- * Une seule route (/analysis) : l'onglet affiche est dans l'URL (?tab=...), ainsi que le backtest ouvert (&id=...).
+ * Une seule route (/analysis) : l'onglet affiche est dans l'URL (?tab=...), ainsi que, dans l'historique, la section
+ * (&section=comparaisons), le backtest ouvert (&id=...) ou la comparaison ouverte (&comparison=...).
  * La page garde ce qui doit survivre a un changement d'onglet : reglages, saisie et dernier resultat.
  */
 export default function AnalysisPage() {
   const [search, setSearch] = useSearchParams();
   const tab: TabId = TABS.find((t) => t.id === search.get("tab"))?.id ?? "technique";
-  const idParam = Number(search.get("id"));
-  const openId = tab === "historique" && Number.isInteger(idParam) && idParam > 0 ? idParam : null;
+  /** identifiant strictement positif lu dans l'URL, sinon null */
+  const idFrom = (name: string) => {
+    const value = Number(search.get(name));
+    return Number.isInteger(value) && value > 0 ? value : null;
+  };
+  const historySection: HistorySection = search.get("section") === "comparaisons" ? "comparaisons" : "backtests";
+  const openId = tab === "historique" && historySection === "backtests" ? idFrom("id") : null;
+  const openComparisonId = tab === "historique" && historySection === "comparaisons" ? idFrom("comparison") : null;
 
-  const go = (next: TabId, backtestId?: number | null) =>
-    setSearch(backtestId != null ? { tab: next, id: String(backtestId) } : next === "technique" ? {} : { tab: next });
+  /** change d'onglet ; extra : autres parametres de l'URL (section, id, comparison) */
+  const go = (next: TabId, extra: Record<string, string> = {}) =>
+    setSearch(next === "technique" && Object.keys(extra).length === 0 ? {} : { tab: next, ...extra });
+  const openSavedComparison = (id: number | null) =>
+    go("historique", id != null ? { section: "comparaisons", comparison: String(id) } : { section: "comparaisons" });
 
   const [assets, setAssets] = useState<Asset[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(true);
@@ -54,10 +64,12 @@ export default function AnalysisPage() {
   const [strategiesError, setStrategiesError] = useState("");
 
   const [tech, setTech] = useState<TechSettings>(DEFAULT_TECH);
+  /** configuration d'indicateurs choisie dans l'analyse technique (null : reglages libres) */
+  const [techConfigId, setTechConfigId] = useState<number | null>(null);
   const [form, setForm] = useState<BacktestFormValues>(DEFAULT_BACKTEST_FORM);
   const [result, setResult] = useState<BacktestDetail | null>(null);
   const [comparisonForm, setComparisonForm] = useState<ComparisonFormValues>(DEFAULT_COMPARISON_FORM);
-  const [comparison, setComparison] = useState<BacktestComparison | null>(null);
+  const [comparison, setComparison] = useState<ComparisonRun | null>(null);
   /** action affichee dans l'analyse fondamentale (vide : la premiere de la liste) */
   const [fundamentalSymbol, setFundamentalSymbol] = useState("");
 
@@ -105,7 +117,9 @@ export default function AnalysisPage() {
       </TabsList>
 
       <TabsContent value="technique">
-        <TechnicalTab assets={assets} assetsLoading={assetsLoading} assetsError={assetsError} settings={tech} onChange={setTech} />
+        <TechnicalTab assets={assets} assetsLoading={assetsLoading} assetsError={assetsError} settings={tech} onChange={setTech}
+          configId={techConfigId} onConfigIdChange={setTechConfigId}
+          onStrategyCreated={() => loadStrategies()} onBacktestStrategy={backtestStrategy} />
       </TabsContent>
 
       <TabsContent value="fondamentale">
@@ -125,16 +139,20 @@ export default function AnalysisPage() {
       </TabsContent>
 
       <TabsContent value="historique">
-        <HistoryTab strategies={strategies} openId={openId} onOpen={(id) => go("historique", id)}
+        <HistoryTab strategies={strategies} openId={openId} onOpen={(id) => go("historique", id != null ? { id: String(id) } : {})}
           onDeleted={(id) => { if (result?.id === id) setResult(null); loadStrategies(); }}
-          onGoToBacktest={() => go("backtest")} />
+          onGoToBacktest={() => go("backtest")}
+          section={historySection} onSection={(s) => go("historique", s === "comparaisons" ? { section: s } : {})}
+          openComparisonId={openComparisonId} onOpenComparison={openSavedComparison}
+          onGoToComparison={() => go("comparaison")} />
       </TabsContent>
 
       <TabsContent value="comparaison">
         <ComparisonTab strategies={strategies} strategiesLoading={strategiesLoading} strategiesError={strategiesError}
           assets={assets} assetsLoading={assetsLoading} assetsError={assetsError}
-          values={comparisonForm} onValuesChange={setComparisonForm} result={comparison}
-          onResult={setComparison} onGoToStrategies={() => go("strategies")} onReloadStrategies={loadStrategies} />
+          values={comparisonForm} onValuesChange={setComparisonForm} run={comparison}
+          onRunChange={setComparison} onGoToStrategies={() => go("strategies")} onReloadStrategies={loadStrategies}
+          onOpenSaved={openSavedComparison} />
       </TabsContent>
     </Tabs>
   );

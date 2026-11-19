@@ -11,8 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Skeleton } from "../../../app/components/ui/skeleton";
 import { dateTime, money } from "../format";
 import {
-  COMPARED_RATIOS, frDate, itemValue, LEVEL_CLASS, LEVEL_LABEL, levelText, NOT_AVAILABLE, ratioValue, SHORT_LABEL,
-  STATUS_CLASS, STATUS_LABEL,
+  COMPARED_RATIOS, conceptParts, frDate, itemValue, LEVEL_CLASS, LEVEL_LABEL, levelText, NO_DIVIDEND_TITLE, NOT_AVAILABLE, ratioValue,
+  SHORT_LABEL, STATUS_CLASS, STATUS_LABEL,
 } from "../fundamentals";
 import { EmptyState, ErrorBanner, Field, FIELD_DARK, OUTLINE_DARK } from "./Feedback";
 
@@ -195,6 +195,11 @@ export default function FundamentalsTab({ symbol, onSymbolChange }: Props) {
               Ratios calculés à partir des rapports annuels 10-K déposés à la SEC (gendarme de la bourse américaine), dont les
               comptes sont audités, et du dernier cours connu. Seules les actions de la plateforme sont concernées.
             </p>
+            <p className="text-[11px] text-muted-foreground mt-1.5 max-w-3xl">
+              <span className="font-semibold text-foreground/80">Limites :</span> sociétés américaines uniquement (rapports
+              10-K) ; ratios peu adaptés aux banques et aux assurances, dont la dette fait partie du métier ; ratios calculés
+              sur les comptes annuels, parfois vieux de plusieurs mois, et le dernier cours connu.
+            </p>
           </div>
         </div>
 
@@ -319,10 +324,17 @@ export default function FundamentalsTab({ symbol, onSymbolChange }: Props) {
                         const v = y.items[row];
                         return (
                           <td key={y.end} className="px-4 py-2.5 text-right align-top">
-                            <div className={v.value == null ? "italic text-muted-foreground" : "font-medium text-foreground"} style={MONO}>{itemValue(v)}</div>
-                            {v.concept && (
-                              <div className="text-[10px] text-muted-foreground mt-0.5 ml-auto max-w-[240px] truncate" style={MONO} title={v.concept}>{v.concept}</div>
-                            )}
+                            <div className={v.value == null ? "italic text-muted-foreground" : "font-medium text-foreground"} style={MONO}
+                              title={v.value == null && v.item === "DIVIDEND_PER_SHARE" ? NO_DIVIDEND_TITLE : undefined}>{itemValue(v)}</div>
+                            {v.concept && (() => {
+                              const { base, note } = conceptParts(v.concept);
+                              return (
+                                <>
+                                  <div className="text-[10px] text-muted-foreground mt-0.5 ml-auto max-w-[240px] truncate" style={MONO} title={v.concept}>{base}</div>
+                                  {note && <div className="text-[10px] text-foreground/70 ml-auto max-w-[240px]">{note}</div>}
+                                </>
+                              );
+                            })()}
                           </td>
                         );
                       })}
@@ -373,7 +385,7 @@ export default function FundamentalsTab({ symbol, onSymbolChange }: Props) {
                       ) : (
                         <>
                           <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${STATUS_CLASS[s.status]}`}>{STATUS_LABEL[s.status]}</span>
-                          {s.fiscalYear != null && <div className="text-[10px] text-muted-foreground mt-1" style={MONO}>Ex. {s.fiscalYear} · {frDate(s.fiscalYearEnd)}</div>}
+                          {s.fiscalYear != null && <div className="text-[10px] text-muted-foreground mt-1" style={MONO}>Ex. {s.fiscalYear} · clos le {frDate(s.fiscalYearEnd)}</div>}
                           {rowErrors[s.symbol] && s.status === "MISSING" && (
                             <div className="text-[10px] text-red-600 mt-1 max-w-[200px] truncate" title={rowErrors[s.symbol]}>{rowErrors[s.symbol]}</div>
                           )}
@@ -403,12 +415,11 @@ export default function FundamentalsTab({ symbol, onSymbolChange }: Props) {
       <CardShell className="p-5">
         <h3 className="text-sm font-semibold text-foreground mb-2" style={DISPLAY}>Comment lire cette analyse</h3>
         <ul className="space-y-1.5 text-[12px] text-muted-foreground list-disc pl-4">
-          <li>Les chiffres viennent des rapports annuels 10-K, lus dans leurs données XBRL publiées par la SEC. Les rapports trimestriels ne sont pas utilisés.</li>
-          <li>Les ratios associent les comptes du dernier exercice, parfois vieux de plusieurs mois, au dernier cours connu.</li>
-          <li>Une donnée introuvable est affichée « non disponible », jamais remplacée par 0. Un ratio sans sens économique (PER d'une entreprise en perte, capitaux propres négatifs) n'est pas calculé.</li>
+          <li>Les chiffres viennent des rapports annuels 10-K, lus dans leurs données XBRL publiées par la SEC. Les rapports trimestriels ne sont pas utilisés. Les montants sont en dollars.</li>
+          <li>Une donnée introuvable est affichée « non disponible », jamais remplacée par 0. Un ratio sans sens économique (PER d'une entreprise en perte, capitaux propres négatifs) n'est pas calculé. Sans dividende publié, le rendement n'est pas affiché comme 0 % : la société n'en verse en général pas.</li>
+          <li>Nombre d'actions : celui de la page de garde du dernier 10-K, toutes catégories additionnées (A, B, C chez Alphabet). Pour les exercices précédents, le nombre à la clôture tel que republié ensuite : il est retraité des divisions d'actions, comme le BPA, pour rester comparable.</li>
           <li>La dette comprend les emprunts et obligations (part à moins d'un an incluse) et les billets de trésorerie, sans les contrats de location.</li>
           <li>Les données sont gardées 30 jours. Si la SEC ne répond pas, les dernières données connues sont utilisées et signalées.</li>
-          <li>Seules les sociétés cotées aux États-Unis qui déposent un 10-K sont couvertes ; les montants sont en dollars.</li>
         </ul>
       </CardShell>
     </div>

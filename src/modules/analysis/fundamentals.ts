@@ -6,6 +6,9 @@ import type {
 import { money, num, pctPlain, pctSigned } from "./format";
 
 export const NOT_AVAILABLE = "non disponible";
+/** Dividende absent du 10-K : la societe n'en verse en general pas. Jamais affiche comme 0. */
+export const NO_DIVIDEND = "aucun publié";
+export const NO_DIVIDEND_TITLE = "Aucun dividende par action publié dans ce rapport 10-K : en général, la société n'en verse pas.";
 
 const isNum = (v: number | null | undefined): v is number => v != null && Number.isFinite(v);
 
@@ -17,14 +20,34 @@ export function compact(v: number): string {
   return v.toLocaleString("en-US");
 }
 
+/**
+ * Montant par action : 2 decimales, ou 3 quand le 10-K en publie 3 (dividende de 0,034 $ chez NVIDIA apres sa
+ * division d'actions : arrondi a 0,03 $, il ne correspondrait plus au rapport).
+ */
+export function perShare(v: number): string {
+  const cents = v * 100;
+  if (Math.abs(cents - Math.round(cents)) < 1e-6) return money(v);
+  return `${v < 0 ? "-" : ""}$${Math.abs(v).toFixed(3)}`;
+}
+
 /** Valeur d'une donnee du 10-K, selon son unite. */
 export function itemValue(i: FundamentalItemValue): string {
-  if (!isNum(i.value)) return NOT_AVAILABLE;
+  if (!isNum(i.value)) return i.item === "DIVIDEND_PER_SHARE" ? NO_DIVIDEND : NOT_AVAILABLE;
   switch (i.unit) {
     case "USD": return `$${compact(i.value)}`;
-    case "USD_PER_SHARE": return money(i.value);
+    case "USD_PER_SHARE": return perShare(i.value);
     case "SHARES": return `${compact(i.value)} actions`;
   }
+}
+
+/**
+ * Separe le libelle XBRL de sa precision, pour ne jamais tronquer la precision :
+ * "dei:EntityCommonStockSharesOutstanding (somme de 3 catégories)" -> libelle + "(somme de 3 catégories)",
+ * "us-gaap:CommonStockSharesOutstanding × 10 (division d'actions)" -> libelle + "× 10 (division d'actions)".
+ */
+export function conceptParts(concept: string): { base: string; note: string | null } {
+  const m = /^(.*?)\s([×(].*)$/.exec(concept);
+  return m ? { base: m[1], note: m[2] } : { base: concept, note: null };
 }
 
 /** Ratios dont la variation s'affiche avec son signe (+15,1 %). */

@@ -1,7 +1,8 @@
 // Module 3 : comparaison de strategies (formulaire, classement, meilleure valeur par ligne, export CSV).
 // Fonctions pures : aucun appel au back ni au DOM.
 import type {
-  BacktestComparison, BacktestComparisonRequest, BacktestMetrics, StrategyComparison,
+  BacktestComparison, BacktestComparisonRequest, BacktestMetrics, ComparisonRanking, SavedComparisonSummary,
+  StrategyComparison, StrategyParams,
 } from "../../api/endpoints";
 import { buildBacktestRequest, DEFAULT_BACKTEST_FORM, type BacktestErrors, type BacktestFormValues } from "./backtestForm";
 import { DASH, money, num, pctPlain, pctSigned, ptsSigned } from "./format";
@@ -80,13 +81,14 @@ export interface RankedStrategy {
 }
 
 /**
- * Classe les strategies, la meilleure en premier. Pour les trois criteres, plus grand = meilleur :
+ * Classe des elements selon un score, le meilleur en premier. Pour les trois criteres, plus grand = meilleur :
  * le drawdown est negatif, le plus proche de zero est donc le meilleur. Ex aequo : meme rang.
+ * Un score absent est classe en dernier, sans rang.
  */
-export function rankStrategies(strategies: StrategyComparison[], criterion: RankingMetric): RankedStrategy[] {
-  const valid = (v: number | null): v is number => v != null && Number.isFinite(v);
-  const sorted = strategies
-    .map((strategy, index) => ({ strategy, index, score: strategy.metrics[criterion] }))
+export function rankItems<T>(items: T[], scoreOf: (item: T) => number | null | undefined) {
+  const valid = (v: number | null | undefined): v is number => v != null && Number.isFinite(v);
+  const sorted = items
+    .map((item, index) => ({ item, index, score: scoreOf(item) ?? null }))
     .sort((a, b) => {
       if (valid(a.score) !== valid(b.score)) return valid(a.score) ? -1 : 1;
       if (!valid(a.score) || !valid(b.score)) return a.index - b.index;
@@ -95,12 +97,91 @@ export function rankStrategies(strategies: StrategyComparison[], criterion: Rank
 
   let rank = 0;
   let previous: number | null = null;
-  return sorted.map(({ strategy, index, score }, position) => {
-    if (!valid(score)) return { strategy, index, rank: null, score: null };
+  return sorted.map(({ item, index, score }, position) => {
+    if (!valid(score)) return { item, index, rank: null, score: null };
     if (previous == null || Math.abs(score - previous) > 1e-10) rank = position + 1;
     previous = score;
-    return { strategy, index, rank, score };
+    return { item, index, rank: rank as number | null, score: score as number | null };
   });
+}
+
+/** Classe les strategies d'une comparaison selon le critere choisi. */
+export function rankStrategies(strategies: StrategyComparison[], criterion: RankingMetric): RankedStrategy[] {
+  return rankItems(strategies, (s) => s.metrics[criterion])
+    .map(({ item, index, rank, score }) => ({ strategy: item, index, rank, score }));
+}
+
+// ─── Comparaisons enregistrees ───────────────────────────────────────────────
+
+/** Le critere est enregistre en majuscules cote back (ComparisonRanking). */
+export const RANKING_TO_API: Record<RankingMetric, ComparisonRanking> = {
+  sharpe: "SHARPE",
+  annualizedReturn: "ANNUALIZED_RETURN",
+  maxDrawdown: "MAX_DRAWDOWN",
+};
+
+export const rankingFromApi = (value: ComparisonRanking): RankingMetric =>
+  (Object.keys(RANKING_TO_API) as RankingMetric[]).find((k) => RANKING_TO_API[k] === value) ?? "sharpe";
+
+/**
+ * Derniere comparaison lancee dans l'onglet Comparaison. On garde la demande qui l'a produite : c'est elle qui est
+ * renvoyee pour l'enregistrer, meme si le formulaire a ete modifie depuis.
+ */
+export interface ComparisonRun {
+  request: BacktestComparisonRequest;
+  result: BacktestComparison;
+  criterion: RankingMetric;
+  /** rempli une fois la comparaison enregistree dans l'historique */
+  saved: { id: number; name: string; createdAt: string } | null;
+  /** changements constates a l'enregistrement (cours mis a jour, strategie modifiee entre-temps) */
+  changes: string[];
+}
+
+export const rankingLabel = (value: RankingMetric) => RANKING_OPTIONS.find((o) => o.value === value)?.label ?? value;
+
+/** Meme limite que le back (SavedComparisonService.NAME_MAX). */
+export const COMPARISON_NAME_MAX = 100;
+
+/** Nom propose a l'enregistrement, ex. « AAPL · 3 stratégies · 2021-01-04 → 2026-11-18 ». */
+export const defaultComparisonName = (result: BacktestComparison) =>
+  `${result.symbol} · ${result.strategies.length} stratégies · ${result.from} → ${result.to}`.slice(0, COMPARISON_NAME_MAX);
+
+/** Message d'erreur du nom saisi, ou "" s'il est valide. */
+export function comparisonNameError(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed === "") return "Le nom est obligatoire";
+  if (trimmed.length > COMPARISON_NAME_MAX) return `${COMPARISON_NAME_MAX} caractères au maximum`;
+  return "";
+}
+
+const PARAM_KEYS: (keyof StrategyParams)[] = ["fastPeriod", "slowPeriod", "signalPeriod", "period", "buyBelow", "sellAbove", "bandK"];
+const sameParams = (a: StrategyParams | null | undefined, b: StrategyParams | null | undefined) =>
+  PARAM_KEYS.every((k) => (a?.[k] ?? null) === (b?.[k] ?? null));
+
+/**
+ * Ce qui a change entre la comparaison affichee et celle que le serveur vient de recalculer pour l'enregistrer :
+ * de nouveaux cours (empreinte differente) ou une strategie modifiee entre-temps (autre onglet, autre fenetre).
+ * Renvoie des phrases a afficher ; vide si les deux resultats portent sur les memes donnees.
+ */
+export function changesSinceDisplay(shown: BacktestComparison, saved: BacktestComparison): string[] {
+  const changes: string[] = [];
+  if (shown.dataHash !== saved.dataHash) {
+    changes.push(`Les cours de ${saved.symbol} ont été mis à jour depuis l'affichage (${saved.from} → ${saved.to}).`);
+  }
+  for (const s of saved.strategies) {
+    const before = shown.strategies.find((x) => x.strategyId === s.strategyId);
+    if (!before || before.strategyType !== s.strategyType || !sameParams(before.params, s.params)) {
+      changes.push(`La stratégie « ${s.strategyName} » a été modifiée depuis l'affichage.`);
+    }
+  }
+  return changes;
+}
+
+/** Meilleure strategie d'une comparaison enregistree selon son critere (sur les metriques de la liste). */
+export function bestSnapshot(summary: SavedComparisonSummary) {
+  const criterion = rankingFromApi(summary.rankBy);
+  const best = rankItems(summary.strategies, (s) => s[criterion])[0];
+  return best && best.rank != null ? { snapshot: best.item, index: best.index, score: best.score, criterion } : null;
 }
 
 // ─── Tableau des metriques ───────────────────────────────────────────────────

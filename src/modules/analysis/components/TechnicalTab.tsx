@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { LineChart } from "lucide-react";
-import { indicatorsApi, type Asset, type IndicatorSeries } from "../../../api/endpoints";
+import { indicatorsApi, type Asset, type IndicatorConfig, type IndicatorSeries, type Strategy } from "../../../api/endpoints";
 import { errorMessage } from "../../../api/client";
 import { CardShell, DISPLAY, MONO, SignalBadge, type Signal } from "../../../shared/ui";
 import { Button } from "../../../app/components/ui/button";
@@ -16,6 +16,7 @@ import {
   type IndicatorId, type PeriodDraft, type PeriodErrors, type PeriodKey, type Periods, type TechSettings,
 } from "../technical";
 import { EmptyState, ErrorBanner, Field, FIELD_DARK, SWITCH_DARK } from "./Feedback";
+import IndicatorConfigBar from "./IndicatorConfigBar";
 import { MacdChart, PriceChart, RsiChart } from "./TechnicalCharts";
 
 interface Props {
@@ -25,6 +26,12 @@ interface Props {
   /** reglages gardes par la page : ils survivent au changement d'onglet */
   settings: TechSettings;
   onChange: (s: TechSettings) => void;
+  /** configuration d'indicateurs choisie (gardee par la page) */
+  configId: number | null;
+  onConfigIdChange: (id: number | null) => void;
+  /** une strategie a ete creee a partir d'une configuration : la liste des strategies est a recharger */
+  onStrategyCreated: (strategy: Strategy) => void;
+  onBacktestStrategy: (strategy: Strategy) => void;
 }
 
 /** Les indicateurs reglables : ou ils s'affichent, leur couleur et leurs periodes. */
@@ -51,7 +58,9 @@ function LineKey({ color, label }: { color: string; label: string }) {
 }
 
 /** Onglet « Analyse technique » : prix + indicateurs (GET /api/analysis/indicators) et resume des signaux. */
-export default function TechnicalTab({ assets, assetsLoading, assetsError, settings, onChange }: Props) {
+export default function TechnicalTab({
+  assets, assetsLoading, assetsError, settings, onChange, configId, onConfigIdChange, onStrategyCreated, onBacktestStrategy,
+}: Props) {
   const c = useChartColors();
   /** derniere reponse recue, avec les reglages qui l'ont produite (les courbes restent coherentes pendant un rechargement) */
   const [loaded, setLoaded] = useState<{ series: IndicatorSeries; periods: Periods; symbol: string } | null>(null);
@@ -96,6 +105,13 @@ export default function TechnicalTab({ assets, assetsLoading, assetsError, setti
   const dirty = JSON.stringify(draft) !== JSON.stringify(periodDraft(settings.periods));
   const hasDraftError = Object.keys(draftErrors).length > 0;
 
+  /** Applique une configuration enregistree : ses periodes et ses courbes affichees ; l'actif et la periode restent. */
+  const applyConfig = (config: IndicatorConfig) => {
+    onChange({ ...settings, periods: { ...config.periods }, show: { ...config.show } });
+    setDraft(periodDraft(config.periods));
+    setDraftErrors({});
+  };
+
   if (assetsError) return <ErrorBanner message={assetsError} />;
   if (!assetsLoading && assets.length === 0) {
     return (
@@ -114,8 +130,11 @@ export default function TechnicalTab({ assets, assetsLoading, assetsError, setti
 
   return (
     <div className="space-y-4">
-      {/* ── Reglages : actif, periode, indicateurs ── */}
+      {/* ── Reglages : configuration enregistree, actif, periode, indicateurs ── */}
       <CardShell className="p-5 space-y-4">
+        <IndicatorConfigBar periods={settings.periods} show={settings.show} draftDirty={dirty}
+          selectedId={configId} onSelect={onConfigIdChange} onApply={applyConfig}
+          onStrategyCreated={onStrategyCreated} onBacktestStrategy={onBacktestStrategy} />
         <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
           <Field label="Actif" className="w-60">
             <Select value={settings.symbol} onValueChange={(symbol) => onChange({ ...settings, symbol })}>

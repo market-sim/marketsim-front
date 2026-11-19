@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { strategiesApi, type Strategy, type StrategyType } from "../../../api/endpoints";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { strategiesApi, type Strategy, type StrategyParams, type StrategyType } from "../../../api/endpoints";
 import { errorMessage } from "../../../api/client";
 import { MONO } from "../../../shared/ui";
 import { Button } from "../../../app/components/ui/button";
@@ -14,9 +14,25 @@ import {
 } from "../strategyRules";
 import { Field, FIELD_DARK, OUTLINE_DARK, SWITCH_DARK, useReturnFocus } from "./Feedback";
 
+/** Creation preremplie, par exemple a partir d'une configuration d'indicateurs (onglet Analyse technique). */
+export interface StrategyPreset {
+  name: string;
+  description: string;
+  /** type choisi a l'ouverture */
+  type: StrategyType;
+  /** parametres proposes pour un type (ils changent avec le type choisi) ; null = valeurs par defaut du type */
+  paramsFor: (type: StrategyType) => StrategyParams | null;
+  /** d'ou viennent les parametres du type choisi, affiche sous les champs */
+  sourceNote: (type: StrategyType) => string;
+  /** phrase d'introduction de la fenetre */
+  intro: ReactNode;
+}
+
 interface Props {
   /** strategie a modifier ; absent = creation */
   initial?: Strategy;
+  /** creation preremplie (ignore si `initial` est fourni) */
+  preset?: StrategyPreset;
   onSaved: (saved: Strategy) => void;
   /** la strategie a modifier n'existe plus cote back (404) : la liste derriere la fenetre est a recharger */
   onGone?: () => void;
@@ -26,11 +42,14 @@ interface Props {
 const NAME_MAX = 80;
 
 /** Creation / modification d'une strategie. A monter seulement quand le formulaire doit s'afficher. */
-export default function StrategyFormDialog({ initial, onSaved, onGone, onClose }: Props) {
-  const [name, setName] = useState(initial?.name ?? "");
-  const [description, setDescription] = useState(initial?.description ?? "");
-  const [type, setType] = useState<StrategyType | "">(initial?.type ?? "");
-  const [draft, setDraft] = useState<ParamDraft>(() => (initial?.type ? draftFor(initial.type, initial.params) : {}));
+export default function StrategyFormDialog({ initial, preset: presetProp, onSaved, onGone, onClose }: Props) {
+  const preset = initial ? undefined : presetProp;
+  const [name, setName] = useState(initial?.name ?? preset?.name ?? "");
+  const [description, setDescription] = useState(initial?.description ?? preset?.description ?? "");
+  const [type, setType] = useState<StrategyType | "">(initial?.type ?? preset?.type ?? "");
+  const [draft, setDraft] = useState<ParamDraft>(() => (
+    initial?.type ? draftFor(initial.type, initial.params) : preset ? draftFor(preset.type, preset.paramsFor(preset.type)) : {}
+  ));
   const [active, setActive] = useState(initial?.status !== "PAUSED");
   const [submitted, setSubmitted] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -43,10 +62,10 @@ export default function StrategyFormDialog({ initial, onSaved, onGone, onClose }
   const checked = type === "" ? { params: {}, errors: {} as ParamErrors } : validateParams(type, draft);
   const invalid = !!nameError || !!typeError || Object.keys(checked.errors).length > 0;
 
-  /** Changer de type remet les parametres par defaut de ce type. */
+  /** Changer de type remet les parametres par defaut de ce type (ou ceux proposes par le preremplissage). */
   const chooseType = (next: StrategyType) => {
     setType(next);
-    setDraft(draftFor(next, next === initial?.type ? initial.params : null));
+    setDraft(draftFor(next, next === initial?.type ? initial.params : preset ? preset.paramsFor(next) : null));
   };
 
   const submit = async (e: FormEvent) => {
@@ -78,12 +97,13 @@ export default function StrategyFormDialog({ initial, onSaved, onGone, onClose }
         <DialogHeader>
           <DialogTitle>{initial ? "Modifier la stratégie" : "Nouvelle stratégie"}</DialogTitle>
           <DialogDescription>
-            Le type fixe la règle d'achat et de vente ; ses paramètres se règlent ci-dessous.
+            {preset?.intro ?? "Le type fixe la règle d'achat et de vente ; ses paramètres se règlent ci-dessous."}
             {initial ? " Les backtests déjà enregistrés gardent les paramètres avec lesquels ils ont été lancés." : ""}
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={submit} noValidate className="space-y-4">
+        {/* min-w-0 : sans lui, le libelle du type (sans retour a la ligne) elargit la fenetre au-dela de l'ecran d'un telephone */}
+        <form onSubmit={submit} noValidate className="space-y-4 min-w-0">
           <Field label="Nom" htmlFor="strategy-name" error={submitted ? nameError : undefined}>
             <Input id="strategy-name" className={FIELD_DARK} value={name} maxLength={NAME_MAX} autoFocus placeholder="Croisement 20 / 50 sur AAPL"
               aria-invalid={submitted && !!nameError} onChange={(e) => setName(e.target.value)} />
@@ -96,7 +116,7 @@ export default function StrategyFormDialog({ initial, onSaved, onGone, onClose }
 
           <Field label="Type de stratégie" error={submitted ? typeError : undefined} hint={type ? typeRule[type] : undefined}>
             <Select value={type} onValueChange={(v) => chooseType(v as StrategyType)}>
-              <SelectTrigger className={FIELD_DARK} aria-label="Type de stratégie" aria-invalid={submitted && !!typeError}>
+              <SelectTrigger className={`w-full ${FIELD_DARK}`} aria-label="Type de stratégie" aria-invalid={submitted && !!typeError}>
                 <SelectValue placeholder="Choisir un type" />
               </SelectTrigger>
               <SelectContent>
@@ -115,6 +135,9 @@ export default function StrategyFormDialog({ initial, onSaved, onGone, onClose }
                 </Field>
               ))}
             </div>
+          )}
+          {preset && type !== "" && (
+            <p className="-mt-1 rounded-md bg-muted/40 px-3 py-2 text-[11px] text-foreground/80">{preset.sourceNote(type)}</p>
           )}
 
           <div className="flex items-center gap-3">

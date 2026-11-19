@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, History, Trash2 } from "lucide-react";
-import { backtestsApi, type BacktestDetail, type BacktestSummary, type Strategy } from "../../../api/endpoints";
+import { backtestsApi, comparisonsApi, type BacktestDetail, type BacktestSummary, type Strategy } from "../../../api/endpoints";
 import { errorMessage } from "../../../api/client";
 import { CardShell, DISPLAY, MONO } from "../../../shared/ui";
 import { Button } from "../../../app/components/ui/button";
@@ -12,6 +12,78 @@ import { typeShort } from "../strategyRules";
 import BacktestResult from "./BacktestResult";
 import ConfirmDialog from "./ConfirmDialog";
 import { EmptyState, ErrorBanner, FIELD_DARK, OUTLINE_DARK } from "./Feedback";
+import SavedComparisons from "./SavedComparisons";
+
+export type HistorySection = "backtests" | "comparaisons";
+
+const SECTIONS: { id: HistorySection; label: string }[] = [
+  { id: "backtests", label: "Backtests" },
+  { id: "comparaisons", label: "Comparaisons" },
+];
+
+interface HistoryProps extends Props {
+  /** section affichee (lue dans l'URL) */
+  section: HistorySection;
+  onSection: (section: HistorySection) => void;
+  /** comparaison ouverte en detail (lue dans l'URL), ou null */
+  openComparisonId: number | null;
+  onOpenComparison: (id: number | null) => void;
+  onGoToComparison: () => void;
+}
+
+/**
+ * Onglet « Historique » : deux sections, les backtests enregistres et les comparaisons enregistrees.
+ * Le nombre d'elements de chaque section est affiche sur son bouton.
+ */
+export default function HistoryTab({
+  section, onSection, openComparisonId, onOpenComparison, onGoToComparison, ...backtests
+}: HistoryProps) {
+  const [counts, setCounts] = useState<Record<HistorySection, number | null>>({ backtests: null, comparaisons: null });
+  const [version, setVersion] = useState(0);
+  const inDetail = backtests.openId != null || openComparisonId != null;
+  const refreshCounts = () => setVersion((n) => n + 1);
+
+  // compteurs, relus en revenant a une liste et apres un renommage ou une suppression
+  useEffect(() => {
+    if (inDetail) return;
+    let cancelled = false;
+    Promise.allSettled([backtestsApi.list(), comparisonsApi.list()]).then(([b, c]) => {
+      if (cancelled) return;
+      setCounts({
+        backtests: b.status === "fulfilled" ? b.value.length : null,
+        comparaisons: c.status === "fulfilled" ? c.value.length : null,
+      });
+    });
+    return () => { cancelled = true; };
+  }, [version, inDetail]);
+
+  return (
+    <div className="space-y-4">
+      {!inDetail && (
+        <div role="group" aria-label="Section de l'historique"
+          className="flex w-full gap-0.5 rounded-lg border border-border bg-white p-0.5 dark:bg-card sm:w-fit">
+          {SECTIONS.map((s) => (
+            <button key={s.id} type="button" aria-pressed={section === s.id} onClick={() => onSection(s.id)}
+              className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 h-8 rounded-md text-[13px] font-medium transition-colors ${section === s.id ? "bg-blue-600 text-white" : "text-muted-foreground hover:bg-muted/50"}`}>
+              {s.label}
+              {counts[s.id] != null && (
+                <span className={`rounded-full px-1.5 text-[11px] ${section === s.id ? "bg-white/20" : "bg-muted text-foreground"}`} style={MONO}>
+                  {counts[s.id]}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+      {section === "comparaisons" ? (
+        <SavedComparisons openId={openComparisonId} onOpen={onOpenComparison} onChanged={refreshCounts}
+          onGoToComparison={onGoToComparison} />
+      ) : (
+        <BacktestHistory {...backtests} onDeleted={(id) => { backtests.onDeleted(id); refreshCounts(); }} />
+      )}
+    </div>
+  );
+}
 
 interface Props {
   strategies: Strategy[];
@@ -25,8 +97,8 @@ interface Props {
 
 const ALL = "all";
 
-/** Onglet « Historique » : mes backtests passes (GET /api/analysis/backtests), detail et suppression. */
-export default function HistoryTab({ strategies, openId, onOpen, onDeleted, onGoToBacktest }: Props) {
+/** Section « Backtests » de l'historique : mes backtests passes (GET /api/analysis/backtests), detail et suppression. */
+function BacktestHistory({ strategies, openId, onOpen, onDeleted, onGoToBacktest }: Props) {
   const [filter, setFilter] = useState(ALL);
   const [list, setList] = useState<BacktestSummary[] | null>(null);
   const [listLoading, setListLoading] = useState(false);

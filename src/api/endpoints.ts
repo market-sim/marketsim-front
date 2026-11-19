@@ -139,6 +139,54 @@ export const indicatorsApi = {
     }).then((r) => r.data),
 };
 
+// --- Configurations d'indicateurs (onglet Analyse technique) ---
+/** Periodes : memes noms que les reglages de l'onglet (technical.ts, Periods). */
+export interface IndicatorConfigPeriods {
+  smaFast: number;
+  smaSlow: number;
+  ema: number;
+  rsi: number;
+  macdFast: number;
+  macdSlow: number;
+  macdSignal: number;
+  bbPeriod: number;
+  bbK: number;
+}
+/** Indicateurs affiches : memes noms que les interrupteurs de l'onglet (technical.ts, Visibility). */
+export interface IndicatorConfigVisibility {
+  smaFast: boolean;
+  smaSlow: boolean;
+  ema: boolean;
+  bollinger: boolean;
+  rsi: boolean;
+  macd: boolean;
+}
+export interface IndicatorConfig {
+  id: number;
+  name: string;
+  description: string | null;
+  periods: IndicatorConfigPeriods;
+  show: IndicatorConfigVisibility;
+  createdAt: string;
+  updatedAt: string;
+}
+/** Creation ou modification (remplace tout) ; un nom deja pris par une autre configuration renvoie un 409. */
+export interface IndicatorConfigRequest {
+  name: string;
+  description: string | null;
+  periods: IndicatorConfigPeriods;
+  show: IndicatorConfigVisibility;
+}
+
+export const indicatorConfigsApi = {
+  list: () => api.get<IndicatorConfig[]>("/analysis/indicator-configs").then((r) => r.data),
+  get: (id: number) => api.get<IndicatorConfig>(`/analysis/indicator-configs/${id}`).then((r) => r.data),
+  create: (req: IndicatorConfigRequest) => api.post<IndicatorConfig>("/analysis/indicator-configs", req).then((r) => r.data),
+  update: (id: number, req: IndicatorConfigRequest) =>
+    api.put<IndicatorConfig>(`/analysis/indicator-configs/${id}`, req).then((r) => r.data),
+  remove: (id: number) => api.delete(`/analysis/indicator-configs/${id}`),
+};
+
 // --- Backtests ---
 /** Seuls strategyId et symbol sont obligatoires ; le back complete le reste avec ses valeurs par defaut. */
 export interface BacktestRequest {
@@ -395,6 +443,70 @@ export const backtestsApi = {
     api.get<BacktestSummary[]>("/analysis/backtests", { params: { strategyId } }).then((r) => r.data),
   get: (id: number) => api.get<BacktestDetail>(`/analysis/backtests/${id}`).then((r) => r.data),
   remove: (id: number) => api.delete(`/analysis/backtests/${id}`),
+};
+
+// --- Comparaisons enregistrees (historique) ---
+export type ComparisonRanking = "SHARPE" | "ANNUALIZED_RETURN" | "MAX_DRAWDOWN";
+/**
+ * Etat actuel d'une strategie comparee, calcule a chaque lecture : CURRENT (inchangee), MODIFIED (type ou
+ * parametres changes depuis), DELETED (supprimee). La comparaison garde ses resultats d'origine dans tous les cas.
+ */
+export type ComparedStrategyStatus = "CURRENT" | "MODIFIED" | "DELETED";
+
+/** Le serveur relance lui-meme la comparaison decrite par `request` : aucun resultat n'est envoye. */
+export interface SaveComparisonRequest {
+  name: string;
+  rankBy: ComparisonRanking;
+  request: BacktestComparisonRequest;
+}
+
+/** Copie d'une strategie au moment de l'enregistrement, avec ses metriques principales sur la periode complete. */
+export interface ComparedStrategySnapshot {
+  strategyId: number;
+  name: string;
+  type: StrategyType;
+  params: StrategyParams;
+  totalReturn: number | null;
+  annualizedReturn: number | null;
+  sharpe: number | null;
+  maxDrawdown: number | null;
+  tradeCount: number | null;
+}
+
+/** Ligne de l'historique des comparaisons (sans les courbes) ; strategyStatus suit l'ordre de strategies. */
+export interface SavedComparisonSummary {
+  id: number;
+  name: string;
+  symbol: string;
+  from: string;
+  to: string;
+  splitDate: string | null;
+  rankBy: ComparisonRanking;
+  createdAt: string;
+  dataSource: string;
+  dataHash: string;
+  buyHoldReturn: number | null;
+  strategies: ComparedStrategySnapshot[];
+  strategyStatus: ComparedStrategyStatus[];
+}
+
+/** Comparaison enregistree complete ; `result` a le format de la comparaison a la demande. */
+export interface SavedComparisonDetail {
+  id: number;
+  name: string;
+  rankBy: ComparisonRanking;
+  createdAt: string;
+  strategyStatus: ComparedStrategyStatus[];
+  result: BacktestComparison;
+}
+
+export const comparisonsApi = {
+  save: (req: SaveComparisonRequest) => api.post<SavedComparisonDetail>("/analysis/comparisons", req).then((r) => r.data),
+  list: () => api.get<SavedComparisonSummary[]>("/analysis/comparisons").then((r) => r.data),
+  get: (id: number) => api.get<SavedComparisonDetail>(`/analysis/comparisons/${id}`).then((r) => r.data),
+  rename: (id: number, name: string) =>
+    api.patch<SavedComparisonSummary>(`/analysis/comparisons/${id}`, { name }).then((r) => r.data),
+  remove: (id: number) => api.delete(`/analysis/comparisons/${id}`),
 };
 
 // ─── Module 4 : Formation & Pedagogie ────────────────────────────────────────
